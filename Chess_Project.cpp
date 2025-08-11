@@ -1,417 +1,946 @@
-﻿#include <SFML/Graphics.hpp>
+﻿// chess_with_menu_ai_final.cpp
+// SFML Chess single-file program with:
+//  - Centered main menu (lime background)
+//  - Play vs Friend / Play vs AI
+//  - AI thinking delay, valid-move highlighting, check/checkmate/stalemate detection
+//  - Sidebar with piece point values (no overlap)
+//  - Using OOP, and `using namespace std;` per request
+
+#include <SFML/Graphics.hpp>
 #include <map>
 #include <string>
 #include <vector>
+#include <memory>
+#include <cmath>
+#include <algorithm>
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <stdexcept>
+#include <random>
+#include <ctime>
 
-// Chessboard constants
-const int TILE_SIZE = 80;      // Size of each chessboard square (in pixels)
-const int BOARD_SIZE = 8;      // 8×8 chessboard
+using namespace std; // per request: allow omission of std:: prefixes
 
-int main() {
+// ---------- Constants ----------
+const int TILE_SIZE = 80;                // size of board tile in pixels
+const int BOARD_SIZE = 8;                // 8x8 board
+const int SIDEBAR_WIDTH = 320;           // sidebar width in pixels
+const float AI_THINK_SECONDS = 1.5f;     // AI thinking time in seconds
 
-    // Create game window
-    sf::RenderWindow window(
-        sf::VideoMode(BOARD_SIZE * TILE_SIZE, BOARD_SIZE * TILE_SIZE),
-        "Chess Game"
-    );
+// ---------- Forward declarations ----------
+class Piece;
+class Pawn; class Rook; class Knight; class Bishop; class Queen; class King;
 
-    // Colors for the board squares
-    sf::Color lightSquare(240, 255, 255); // Light square color
-    sf::Color darkSquare(165, 136, 99);   // Dark square color
+// ---------- Base piece and derived classes ----------
+class Piece {
+public:
+    sf::Sprite sprite;                 // visual sprite
+    int row = 0, col = 0;              // board coordinates
+    string name;                       // e.g., "w_pawn"
+    bool hasMoved = false;             // for castling / pawn double move
 
-    // Load all piece textures
-    std::map<std::string, sf::Texture> pieceTextures; // Map from piece name → texture
+    // Constructor sets texture and initial position
+    Piece(const string& name_, int r, int c, const sf::Texture& t)
+        : name(name_), row(r), col(c) {
+        sprite.setTexture(t);
+        sprite.setPosition(static_cast<float>(col) * TILE_SIZE, static_cast<float>(row) * TILE_SIZE);
+    }
+    virtual ~Piece() = default;
 
-    // Piece names matching PNG files
-    std::vector<std::string> pieceNames = {
-        "w_pawn", "w_rook", "w_knight", "w_bishop", "w_queen", "w_king",
-        "b_pawn", "b_rook", "b_knight", "b_bishop", "b_queen", "b_king"
-    };
+    // Each derived piece implements movement rules here
+    virtual bool isValidMove(int newRow, int newCol, const vector<unique_ptr<Piece>>& pieces) const = 0;
 
-    // Load textures for each piece
-    for (const auto& name : pieceNames) {
-        sf::Texture texture;
-        if (!texture.loadFromFile("Assets/"+name + ".png")) { // Load from file
-            return -1; // Exit if a texture can't be loaded
-        }
-        pieceTextures[name] = texture; // Store in the map
+    // Put piece to new logical position and update sprite
+    void setPosition(int r, int c) {
+        row = r; col = c;
+        sprite.setPosition(static_cast<float>(col) * TILE_SIZE, static_cast<float>(row) * TILE_SIZE);
+        hasMoved = true;
+    }
+    sf::Sprite& getSprite() { return sprite; }
+    int getRow() const { return row; }
+    int getCol() const { return col; }
+    const string& getName() const { return name; }
+    bool isWhite() const { return !name.empty() && name[0] == 'w'; }
+    bool getHasMoved() const { return hasMoved; }
+
+    // Check if target square is occupied by same color
+    bool isSquareOccupiedBySameColor(int r, int c, const vector<unique_ptr<Piece>>& pieces) const {
+        for (const auto& p : pieces) if (p->getRow() == r && p->getCol() == c && p->isWhite() == isWhite()) return true;
+        return false;
     }
 
-  
-   
-    // Base Class Piece
-    class Piece {
-    public: 
-        sf::Sprite sprite; // The image to display
-        int row, col;      // Board position (0-7 for both row & col)
-        std::string name;  // Name like "w_pawn" or "b_queen"
-		bool hasMoved = false; // Track if piece has moved (for castling, en passant, etc.)
-    public:
-
-        // Constructor
-        Piece(const std::string& name, int row, int col, const sf::Texture& texture)
-            : name(name), row(row), col(col) {
-            sprite.setTexture(texture);
-                sprite.setPosition(static_cast<float>(col) * static_cast<float>(TILE_SIZE), static_cast<float>(row) * static_cast<float>(TILE_SIZE));
+    // Check path clear for sliding pieces (rook/bishop/queen)
+    bool isPathClear(int newRow, int newCol, const vector<unique_ptr<Piece>>& pieces) const {
+        int rowStep = (newRow > row) ? 1 : (newRow < row) ? -1 : 0;
+        int colStep = (newCol > col) ? 1 : (newCol < col) ? -1 : 0;
+        int r = row + rowStep, c = col + colStep;
+        while (r != newRow || c != newCol) {
+            for (const auto& p : pieces) if (p->getRow() == r && p->getCol() == c) return false;
+            r += rowStep; c += colStep;
         }
-        virtual ~Piece() = default;
+        return true;
+    }
+};
 
+class Pawn : public Piece {
+public:
+    Pawn(const string& n, int r, int c, const sf::Texture& t) : Piece(n, r, c, t) {}
+    bool isValidMove(int newRow, int newCol, const vector<unique_ptr<Piece>>& pieces) const override {
+        int dir = isWhite() ? -1 : 1;
+        if (col == newCol) {
+            if (newRow == row + dir) {
+                for (const auto& p : pieces) if (p->getRow() == newRow && p->getCol() == newCol) return false;
+                return true;
+            }
+            if (newRow == row + 2 * dir && !hasMoved) {
+                for (const auto& p : pieces) {
+                    if (p->getCol() == col && (p->getRow() == row + dir || p->getRow() == row + 2 * dir)) return false;
+                }
+                return true;
+            }
+        }
+        else if (abs(newCol - col) == 1 && newRow == row + dir) {
+            for (const auto& p : pieces) if (p->getRow() == newRow && p->getCol() == newCol && p->isWhite() != isWhite()) return true;
+        }
+        return false;
+    }
+};
 
-       // Pure virtual function for movement validation
-       virtual bool isValidMove(int newRow, int newCol, const std::vector<std::unique_ptr<Piece>>& pieces) const = 0;
+class Rook : public Piece {
+public:
+    Rook(const string& n, int r, int c, const sf::Texture& t) : Piece(n, r, c, t) {}
+    bool isValidMove(int newRow, int newCol, const vector<unique_ptr<Piece>>& pieces) const override {
+        if (newRow != row && newCol != col) return false;
+        if (!isPathClear(newRow, newCol, pieces)) return false;
+        return !isSquareOccupiedBySameColor(newRow, newCol, pieces);
+    }
+};
 
-       void setPosition(int newRow, int newCol) {
-           row = newRow;
-           col = newCol;
-           sprite.setPosition(static_cast<float>(col) * static_cast<float>(TILE_SIZE), static_cast<float>(row) * static_cast<float>(TILE_SIZE));
-           hasMoved = true;
-       }
-	   // Getters for piece properties
-       sf::Sprite& getSprite() { return sprite; }
-       int getRow()  { return row; }
-       int getCol()  { return col; }
-       const std::string& getName() const { return name; }
-       bool getHasMoved() const { return hasMoved; }
-       bool isWhite() const { return name[0] == 'w'; }
+class Knight : public Piece {
+public:
+    Knight(const string& n, int r, int c, const sf::Texture& t) : Piece(n, r, c, t) {}
+    bool isValidMove(int newRow, int newCol, const vector<unique_ptr<Piece>>& pieces) const override {
+        int dr = abs(newRow - row), dc = abs(newCol - col);
+        if (!((dr == 2 && dc == 1) || (dr == 1 && dc == 2))) return false;
+        return !isSquareOccupiedBySameColor(newRow, newCol, pieces);
+    }
+};
 
-       // Helper function to check if square is occupied by same color
-       bool isSquareOccupiedBySameColor(int row, int col, const std::vector<std::unique_ptr<Piece>>& pieces) const {
-           for (const auto& piece : pieces) {
-               if (piece->getRow() == row && piece->getCol() == col && piece->isWhite() == this->isWhite()) {
-                   return true;
-               }
-           }
-           return false;
-       }
+class Bishop : public Piece {
+public:
+    Bishop(const string& n, int r, int c, const sf::Texture& t) : Piece(n, r, c, t) {}
+    bool isValidMove(int newRow, int newCol, const vector<unique_ptr<Piece>>& pieces) const override {
+        if (abs(newRow - row) != abs(newCol - col)) return false;
+        if (!isPathClear(newRow, newCol, pieces)) return false;
+        return !isSquareOccupiedBySameColor(newRow, newCol, pieces);
+    }
+};
 
-       // Helper function to check if path is clear (for sliding pieces)
-       bool isPathClear(int newRow, int newCol, const std::vector<std::unique_ptr<Piece>>& pieces) const {
-           int rowStep = (newRow > row) ? 1 : (newRow < row) ? -1 : 0;
-           int colStep = (newCol > col) ? 1 : (newCol < col) ? -1 : 0;
+class Queen : public Piece {
+public:
+    Queen(const string& n, int r, int c, const sf::Texture& t) : Piece(n, r, c, t) {}
+    bool isValidMove(int newRow, int newCol, const vector<unique_ptr<Piece>>& pieces) const override {
+        bool straight = (newRow == row || newCol == col);
+        bool diag = (abs(newRow - row) == abs(newCol - col));
+        if (!straight && !diag) return false;
+        if (!isPathClear(newRow, newCol, pieces)) return false;
+        return !isSquareOccupiedBySameColor(newRow, newCol, pieces);
+    }
+};
 
-           int currentRow = row + rowStep;
-           int currentCol = col + colStep;
+class King : public Piece {
+public:
+    King(const string& n, int r, int c, const sf::Texture& t) : Piece(n, r, c, t) {}
+    bool isValidMove(int newRow, int newCol, const vector<unique_ptr<Piece>>& pieces) const override {
+        int dr = abs(newRow - row), dc = abs(newCol - col);
+        if (dr > 1 || dc > 1) return false; // castling handled separately if added later
+        return !isSquareOccupiedBySameColor(newRow, newCol, pieces);
+    }
+};
 
-           while (currentRow != newRow || currentCol != newCol) {
-               for (const auto& piece : pieces) {
-                   if (piece->getRow() == currentRow && piece->getCol() == currentCol) {
-                       return false; // There's a piece in the way
-                   }
-               }
-               currentRow += rowStep;
-               currentCol += colStep;
-           }
-           return true;
-       }
-    };
-   
-	// Derived classes for each piece type
-    class Pawn : public Piece {
-    public:
-        Pawn(const std::string& name, int row, int col, const sf::Texture& texture)
-            : Piece(name, row, col, texture) {
+// ---------- Utilities ----------
+unique_ptr<Piece> createPieceFromName(const string& name, int r, int c, const map<string, sf::Texture>& textures) {
+    auto it = textures.find(name);
+    if (it == textures.end()) throw runtime_error("Texture missing for: " + name);
+    const sf::Texture& t = it->second;
+    if (name.find("pawn") != string::npos) return make_unique<Pawn>(name, r, c, t);
+    if (name.find("rook") != string::npos) return make_unique<Rook>(name, r, c, t);
+    if (name.find("knight") != string::npos) return make_unique<Knight>(name, r, c, t);
+    if (name.find("bishop") != string::npos) return make_unique<Bishop>(name, r, c, t);
+    if (name.find("queen") != string::npos) return make_unique<Queen>(name, r, c, t);
+    if (name.find("king") != string::npos) return make_unique<King>(name, r, c, t);
+    throw runtime_error("Unknown piece type: " + name);
+}
+
+vector<unique_ptr<Piece>> clonePieces(const vector<unique_ptr<Piece>>& pieces, const map<string, sf::Texture>& textures) {
+    vector<unique_ptr<Piece>> copy;
+    copy.reserve(pieces.size());
+    for (const auto& p : pieces) {
+        auto np = createPieceFromName(p->getName(), p->getRow(), p->getCol(), textures);
+        np->hasMoved = p->hasMoved;
+        copy.push_back(move(np));
+    }
+    return copy;
+}
+
+// attack detection (used for check detection)
+bool isSquareAttacked(int r, int c, bool byWhite, const vector<unique_ptr<Piece>>& pieces) {
+    for (const auto& p : pieces) {
+        if (p->isWhite() != byWhite) continue;
+        string nm = p->getName();
+        int pr = p->getRow(), pc = p->getCol();
+        if (nm.find("pawn") != string::npos) {
+            int dir = p->isWhite() ? -1 : 1;
+            if (pr + dir == r && (pc - 1 == c || pc + 1 == c)) return true;
+        }
+        else if (nm.find("knight") != string::npos) {
+            int dr = abs(pr - r), dc = abs(pc - c);
+            if ((dr == 2 && dc == 1) || (dr == 1 && dc == 2)) return true;
+        }
+        else if (nm.find("bishop") != string::npos) {
+            if (abs(pr - r) == abs(pc - c)) {
+                int rs = (r > pr) ? 1 : -1, cs = (c > pc) ? 1 : -1;
+                int rr = pr + rs, cc = pc + cs; bool blocked = false;
+                while (rr != r && cc != c) {
+                    for (const auto& o : pieces) if (o->getRow() == rr && o->getCol() == cc) { blocked = true; break; }
+                    if (blocked) break;
+                    rr += rs; cc += cs;
+                }
+                if (!blocked) return true;
+            }
+        }
+        else if (nm.find("rook") != string::npos) {
+            if (pr == r || pc == c) {
+                int rs = (r == pr) ? 0 : ((r > pr) ? 1 : -1), cs = (c == pc) ? 0 : ((c > pc) ? 1 : -1);
+                int rr = pr + rs, cc = pc + cs; bool blocked = false;
+                while (rr != r || cc != c) {
+                    for (const auto& o : pieces) if (o->getRow() == rr && o->getCol() == cc) { blocked = true; break; }
+                    if (blocked) break;
+                    rr += rs; cc += cs;
+                }
+                if (!blocked) return true;
+            }
+        }
+        else if (nm.find("queen") != string::npos) {
+            // combine rook & bishop
+            if (pr == r || pc == c) {
+                int rs = (r == pr) ? 0 : ((r > pr) ? 1 : -1), cs = (c == pc) ? 0 : ((c > pc) ? 1 : -1);
+                int rr = pr + rs, cc = pc + cs; bool blocked = false;
+                while (rr != r || cc != c) {
+                    for (const auto& o : pieces) if (o->getRow() == rr && o->getCol() == cc) { blocked = true; break; }
+                    if (blocked) break;
+                    rr += rs; cc += cs;
+                }
+                if (!blocked) return true;
+            }
+            else if (abs(pr - r) == abs(pc - c)) {
+                int rs = (r > pr) ? 1 : -1, cs = (c > pc) ? 1 : -1;
+                int rr = pr + rs, cc = pc + cs; bool blocked = false;
+                while (rr != r && cc != c) {
+                    for (const auto& o : pieces) if (o->getRow() == rr && o->getCol() == cc) { blocked = true; break; }
+                    if (blocked) break;
+                    rr += rs; cc += cs;
+                }
+                if (!blocked) return true;
+            }
+        }
+        else if (nm.find("king") != string::npos) {
+            int dr = abs(pr - r), dc = abs(pc - c);
+            if (dr <= 1 && dc <= 1) return true;
+        }
+    }
+    return false;
+}
+
+// find king pos for color
+pair<int, int> findKingPos(bool white, const vector<unique_ptr<Piece>>& pieces) {
+    for (const auto& p : pieces) if (p->isWhite() == white && p->getName().find("king") != string::npos) return { p->getRow(), p->getCol() };
+    return { -1,-1 };
+}
+bool isKingInCheck(bool white, const vector<unique_ptr<Piece>>& pieces) {
+    auto kp = findKingPos(white, pieces);
+    if (kp.first == -1) return false;
+    return isSquareAttacked(kp.first, kp.second, !white, pieces);
+}
+
+// simulate a move to check whether it leaves own king in check
+bool wouldMoveLeaveKingInCheck(int pieceIndex, int toRow, int toCol, const vector<unique_ptr<Piece>>& pieces, const map<string, sf::Texture>& textures) {
+    auto copy = clonePieces(pieces, textures);
+    if (pieceIndex < 0 || pieceIndex >= (int)copy.size()) return true;
+    string movingName = pieces[pieceIndex]->getName();
+    bool movingColor = pieces[pieceIndex]->isWhite();
+    int idx = -1;
+    for (int i = 0; i < (int)copy.size(); ++i) {
+        if (copy[i]->getRow() == pieces[pieceIndex]->getRow() && copy[i]->getCol() == pieces[pieceIndex]->getCol() && copy[i]->getName() == movingName) { idx = i; break; }
+    }
+    if (idx == -1) return true;
+    for (int i = 0; i < (int)copy.size(); ++i) {
+        if (i != idx && copy[i]->getRow() == toRow && copy[i]->getCol() == toCol) { copy.erase(copy.begin() + i); if (i < idx) --idx; break; }
+    }
+    copy[idx]->setPosition(toRow, toCol);
+    return isKingInCheck(movingColor, copy);
+}
+
+// check if color has any legal move
+bool hasLegalMove(bool white, const vector<unique_ptr<Piece>>& pieces, const map<string, sf::Texture>& textures) {
+    for (int i = 0; i < (int)pieces.size(); ++i) {
+        if (pieces[i]->isWhite() != white) continue;
+        for (int r = 0; r < BOARD_SIZE; ++r) for (int c = 0; c < BOARD_SIZE; ++c) {
+            if (!pieces[i]->isValidMove(r, c, pieces)) continue;
+            if (pieces[i]->isSquareOccupiedBySameColor(r, c, pieces)) continue;
+            if (!wouldMoveLeaveKingInCheck(i, r, c, pieces, textures)) return true;
+        }
+    }
+    return false;
+}
+
+// notation helpers and piece values
+string coordToAlgebraic(int row, int col) { char file = 'a' + col; char rank = '8' - row; return string() + file + rank; }
+char pieceToLetter(const string& name) {
+    if (name.find("pawn") != string::npos) return ' ';
+    if (name.find("rook") != string::npos) return 'R';
+    if (name.find("knight") != string::npos) return 'N';
+    if (name.find("bishop") != string::npos) return 'B';
+    if (name.find("queen") != string::npos) return 'Q';
+    if (name.find("king") != string::npos) return 'K';
+    return ' ';
+}
+int pieceValue(const string& name) {
+    if (name.find("pawn") != string::npos) return 1;
+    if (name.find("knight") != string::npos) return 3;
+    if (name.find("bishop") != string::npos) return 3;
+    if (name.find("rook") != string::npos) return 5;
+    if (name.find("queen") != string::npos) return 9;
+    if (name.find("king") != string::npos) return 100;
+    return 0;
+}
+
+// ---------- Small UI Button helper ----------
+struct Button {
+    sf::RectangleShape shape;
+    sf::Text text;
+    Button() = default;
+    Button(const string& label, sf::Font& font, sf::Vector2f pos, sf::Vector2f size, unsigned int chsize = 28) {
+        shape.setSize(size); shape.setPosition(pos);
+        shape.setFillColor(sf::Color(80, 80, 80));
+        shape.setOutlineColor(sf::Color(220, 220, 220)); shape.setOutlineThickness(3.f);
+        text.setFont(font); text.setString(label); text.setCharacterSize(chsize); text.setFillColor(sf::Color::White);
+        sf::FloatRect b = text.getLocalBounds();
+        text.setPosition(pos.x + (size.x - b.width) / 2.f - b.left, pos.y + (size.y - b.height) / 2.f - b.top - 4);
+    }
+    void draw(sf::RenderWindow& w) const { w.draw(shape); w.draw(text); }
+    bool isClicked(sf::Vector2f mousePos) const { return shape.getGlobalBounds().contains(mousePos); }
+    void updateHover(sf::Vector2f mousePos) {
+        if (shape.getGlobalBounds().contains(mousePos)) shape.setFillColor(sf::Color(110, 110, 110));
+        else shape.setFillColor(sf::Color(80, 80, 80));
+    }
+};
+
+// ---------- Main ChessGame class (OOP container for everything) ----------
+enum class GameState { MAIN_MENU, PLAYING_FRIEND, PLAYING_AI, GAME_OVER };
+
+class ChessGame {
+public:
+    sf::RenderWindow window;               // main window
+    sf::Font font;                         // font for UI
+    map<string, sf::Texture> textures;      // piece textures
+    vector<unique_ptr<Piece>> pieces;      // current board pieces
+    sf::RectangleShape squares[BOARD_SIZE][BOARD_SIZE]; // board squares visuals
+
+    // UI elements
+    Button playFriendBtn, playAIBtn, exitBtn, backToMenuBtn;
+    sf::Text titleText, subText;
+    sf::Text footerText;
+
+    // game state vars
+    GameState state = GameState::MAIN_MENU;
+    bool whiteTurn = true;
+    bool gameOver = false;
+    bool playWithAI = false;
+
+    // drag/drop
+    bool dragging = false;
+    int draggedIndex = -1;
+    sf::Vector2f dragOffset;
+
+    // en-passant
+    pair<int, int> enPassantTarget = { -1,-1 };
+
+    // undo stack
+    vector<vector<unique_ptr<Piece>>> historyStates;
+
+    // RNG for AI
+    mt19937 rng;
+
+    // AI candidate struct
+    struct Candidate { int pieceIndex; int tr, tc; bool isCapture; int captureValue; bool givesCheck; };
+
+    // AI thinking control
+    bool aiThinking = false;
+    sf::Clock aiClock;
+
+    // end game message (displayed on overlay)
+    string endGameMessage;
+
+    // Constructor
+    ChessGame() : window(sf::VideoMode(TILE_SIZE* BOARD_SIZE + SIDEBAR_WIDTH, TILE_SIZE* BOARD_SIZE), "SFML Chess") {
+        rng.seed((unsigned)time(nullptr));
+        // load font (change path if you store elsewhere)
+        if (!font.loadFromFile("arial-font/arial.ttf")) throw runtime_error("Failed to load font arial.ttf - place in exe folder or change path.");
+        loadTextures();
+        setupBoardUI();
+        setupMenuUI();
+    }
+
+    // Load textures (Assets/w_pawn.png etc.)
+    void loadTextures() {
+        vector<string> names = { "w_pawn","w_rook","w_knight","w_bishop","w_queen","w_king",
+                                "b_pawn","b_rook","b_knight","b_bishop","b_queen","b_king" };
+        for (auto& n : names) {
+            sf::Texture t;
+            string path = "Assets/" + n + ".png";
+            if (!t.loadFromFile(path)) {
+                cerr << "Warning: failed to load " << path << " — creating placeholder\n";
+                t.create(1, 1); // placeholder
+            }
+            textures[n] = t;
+        }
+    }
+
+    // Setup board square colors and title/subtitle text
+    void setupBoardUI() {
+        for (int r = 0; r < BOARD_SIZE; ++r) for (int c = 0; c < BOARD_SIZE; ++c) {
+            squares[r][c].setSize({ (float)TILE_SIZE,(float)TILE_SIZE });
+            squares[r][c].setPosition(c * TILE_SIZE, r * TILE_SIZE);
+            bool light = (r + c) % 2 == 0;
+            // classic beige/brown board
+            squares[r][c].setFillColor(light ? sf::Color(240, 217, 181) : sf::Color(181, 136, 99));
         }
 
-        bool isValidMove(int newRow, int newCol, const std::vector<std::unique_ptr<Piece>>& pieces) const override {
-            int direction = isWhite() ? -1 : 1; // White pawns move up (decreasing row), black down
+        titleText.setFont(font); titleText.setCharacterSize(64); titleText.setFillColor(sf::Color::Black);
+        titleText.setString("SFML Chess");
 
-            // Check for standard move
-            if (col == newCol) {
-                // Single move forward
-                if (newRow == row + direction) {
-                    // Check if destination is empty
-                    for (const auto& piece : pieces) {
-                        if (piece->getRow() == newRow && piece->getCol() == newCol) {
-                            return false;
+        subText.setFont(font); subText.setCharacterSize(26); subText.setFillColor(sf::Color(20, 20, 20));
+        subText.setString("Choose mode");
+
+        footerText.setFont(font); footerText.setCharacterSize(14); footerText.setFillColor(sf::Color(30, 30, 30));
+        footerText.setString("Drag pieces | U:Undo  S:Save  L:Load  R:Restart  Esc:Menu");
+    }
+
+    // Setup centered menu buttons & sidebar back button
+    void setupMenuUI() {
+        // center area excludes sidebar: width = window - sidebar
+        float centerAreaWidth = (window.getSize().x - SIDEBAR_WIDTH);
+        float centerX = centerAreaWidth / 2.f;
+        // Buttons width 360, height 72
+        float btnW = 360.f, btnH = 72.f;
+        playFriendBtn = Button("Play with Friend", font, { centerX - btnW / 2.f, 260.f }, { btnW, btnH }, 28);
+        playAIBtn = Button("Play with AI", font, { centerX - btnW / 2.f, 360.f }, { btnW, btnH }, 28);
+        exitBtn = Button("Exit", font, { centerX - btnW / 2.f, 460.f }, { btnW, btnH }, 28);
+
+        float sx = TILE_SIZE * BOARD_SIZE;
+        backToMenuBtn = Button("Back to Menu", font, { sx + 12.f, (float)window.getSize().y - 80.f }, { SIDEBAR_WIDTH - 24.f, 60.f }, 22);
+    }
+
+    // Add piece helper
+    void addPiece(const string& name, int r, int c) {
+        pieces.push_back(createPieceFromName(name, r, c, textures));
+    }
+
+    // Start a new game (clear board and populate)
+    void startNewGame(bool vsAI) {
+        pieces.clear(); playWithAI = vsAI; whiteTurn = true; gameOver = false; aiThinking = false;
+        enPassantTarget = { -1,-1 }; endGameMessage.clear(); historyStates.clear();
+
+        // Black pieces
+        addPiece("b_rook", 0, 0); addPiece("b_knight", 0, 1); addPiece("b_bishop", 0, 2); addPiece("b_queen", 0, 3);
+        addPiece("b_king", 0, 4); addPiece("b_bishop", 0, 5); addPiece("b_knight", 0, 6); addPiece("b_rook", 0, 7);
+        for (int c = 0; c < 8; ++c) addPiece("b_pawn", 1, c);
+        // White pieces
+        addPiece("w_rook", 7, 0); addPiece("w_knight", 7, 1); addPiece("w_bishop", 7, 2); addPiece("w_queen", 7, 3);
+        addPiece("w_king", 7, 4); addPiece("w_bishop", 7, 5); addPiece("w_knight", 7, 6); addPiece("w_rook", 7, 7);
+        for (int c = 0; c < 8; ++c) addPiece("w_pawn", 6, c);
+
+        saveState();
+        state = vsAI ? GameState::PLAYING_AI : GameState::PLAYING_FRIEND;
+    }
+
+    // Save board clone for undo
+    void saveState() { historyStates.push_back(clonePieces(pieces, textures)); }
+
+    // Undo last move
+    void undo() {
+        if (historyStates.size() < 2) return;
+        historyStates.pop_back();
+        pieces = clonePieces(historyStates.back(), textures);
+        whiteTurn = !whiteTurn;
+        gameOver = false; aiThinking = false; enPassantTarget = { -1,-1 }; endGameMessage.clear();
+    }
+
+    // Simple save/load
+    void saveToFile(const string& fname) {
+        ofstream ofs(fname);
+        if (!ofs) { cerr << "Save failed\n"; return; }
+        ofs << (whiteTurn ? 1 : 0) << "\n";
+        ofs << pieces.size() << "\n";
+        for (auto& p : pieces) ofs << p->getName() << " " << p->getRow() << " " << p->getCol() << " " << p->getHasMoved() << "\n";
+        cerr << "Saved " << fname << "\n";
+    }
+    void loadFromFile(const string& fname) {
+        ifstream ifs(fname);
+        if (!ifs) { cerr << "Load failed\n"; return; }
+        pieces.clear(); int wt; ifs >> wt; whiteTurn = wt == 1;
+        int n; ifs >> n;
+        for (int i = 0; i < n; ++i) { string nm; int r, c; bool hm; ifs >> nm >> r >> c >> hm; pieces.push_back(createPieceFromName(nm, r, c, textures)); pieces.back()->hasMoved = hm; }
+        historyStates.clear(); saveState();
+        state = playWithAI ? GameState::PLAYING_AI : GameState::PLAYING_FRIEND; endGameMessage.clear();
+    }
+
+    // Try to move pieceIndex to (toR,toC). Handles captures, en-passant, promotion.
+    bool tryMove(int pieceIndex, int toR, int toC) {
+        if (pieceIndex < 0 || pieceIndex >= (int)pieces.size()) return false;
+        Piece* moving = pieces[pieceIndex].get();
+        if (!moving->isValidMove(toR, toC, pieces)) return false;
+        if (moving->isSquareOccupiedBySameColor(toR, toC, pieces)) return false;
+        if (wouldMoveLeaveKingInCheck(pieceIndex, toR, toC, pieces, textures)) return false;
+
+        // en-passant capture
+        if (moving->getName().find("pawn") != string::npos && abs(toC - moving->getCol()) == 1 &&
+            none_of(pieces.begin(), pieces.end(), [&](const unique_ptr<Piece>& p) { return p->getRow() == toR && p->getCol() == toC; })) {
+            if (enPassantTarget.first == toR && enPassantTarget.second == toC) {
+                int victimRow = moving->getRow(), victimCol = toC;
+                for (int i = 0; i < (int)pieces.size(); ++i) {
+                    if (pieces[i]->getRow() == victimRow && pieces[i]->getCol() == victimCol && pieces[i]->getName().find("pawn") != string::npos && pieces[i]->isWhite() != moving->isWhite()) {
+                        pieces.erase(pieces.begin() + i);
+                        if (i < pieceIndex) --pieceIndex;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // capture on destination
+        for (int i = 0; i < (int)pieces.size(); ++i) {
+            if (i != pieceIndex && pieces[i]->getRow() == toR && pieces[i]->getCol() == toC) {
+                pieces.erase(pieces.begin() + i);
+                if (i < pieceIndex) --pieceIndex;
+                break;
+            }
+        }
+
+        // en-passant target update for double pawn move
+        if (moving->getName().find("pawn") != string::npos && abs(toR - moving->getRow()) == 2) {
+            int passedRow = (toR + moving->getRow()) / 2;
+            enPassantTarget = { passedRow, toC };
+        }
+        else enPassantTarget = { -1,-1 };
+
+        // perform move and auto-promote pawns to queen
+        pieces[pieceIndex]->setPosition(toR, toC);
+        if (pieces[pieceIndex]->getName().find("pawn") != string::npos) {
+            if ((pieces[pieceIndex]->isWhite() && pieces[pieceIndex]->getRow() == 0) || (!pieces[pieceIndex]->isWhite() && pieces[pieceIndex]->getRow() == 7)) {
+                string newName = pieces[pieceIndex]->isWhite() ? "w_queen" : "b_queen";
+                pieces[pieceIndex] = createPieceFromName(newName, toR, toC, textures);
+                pieces[pieceIndex]->hasMoved = true;
+            }
+        }
+
+        saveState();
+        return true;
+    }
+
+    // AI move generation and selection: prioritize check, highest capture, else random
+    bool makeAIMove(bool aiWhite) {
+        vector<Candidate> all;
+        for (int i = 0; i < (int)pieces.size(); ++i) {
+            if (pieces[i]->isWhite() != aiWhite) continue;
+            for (int r = 0; r < BOARD_SIZE; ++r) for (int c = 0; c < BOARD_SIZE; ++c) {
+                if (!pieces[i]->isValidMove(r, c, pieces)) continue;
+                if (pieces[i]->isSquareOccupiedBySameColor(r, c, pieces)) continue;
+                if (wouldMoveLeaveKingInCheck(i, r, c, pieces, textures)) continue;
+                bool isCap = false; int capVal = 0;
+                for (const auto& p : pieces) if (p->getRow() == r && p->getCol() == c && p->isWhite() != aiWhite) { isCap = true; capVal = pieceValue(p->getName()); break; }
+                // simulate to see if gives check
+                auto copy = clonePieces(pieces, textures);
+                int idx = -1;
+                for (int k = 0; k < (int)copy.size(); ++k) if (copy[k]->getRow() == pieces[i]->getRow() && copy[k]->getCol() == pieces[i]->getCol() && copy[k]->getName() == pieces[i]->getName()) { idx = k; break; }
+                if (idx == -1) continue;
+                for (int k = 0; k < (int)copy.size(); ++k) if (k != idx && copy[k]->getRow() == r && copy[k]->getCol() == c) { copy.erase(copy.begin() + k); if (k < idx) --idx; break; }
+                copy[idx]->setPosition(r, c);
+                bool givesCheck = isKingInCheck(!aiWhite, copy);
+                all.push_back({ i,r,c,isCap,capVal,givesCheck });
+            }
+        }
+        if (all.empty()) return false;
+        // picks moves that give check
+        vector<Candidate> checks;
+        for (auto& c : all) if (c.givesCheck) checks.push_back(c);
+        if (!checks.empty()) {
+            uniform_int_distribution<int> d(0, (int)checks.size() - 1);
+            Candidate sel = checks[d(rng)];
+            return tryAndApplyAIMove(sel);
+        }
+        // else best capture
+        int bestVal = 0;
+        for (auto& c : all) if (c.isCapture) bestVal = max(bestVal, c.captureValue);
+        if (bestVal > 0) {
+            vector<Candidate> bestCaps;
+            for (auto& c : all) if (c.isCapture && c.captureValue == bestVal) bestCaps.push_back(c);
+            uniform_int_distribution<int> d(0, (int)bestCaps.size() - 1);
+            Candidate sel = bestCaps[d(rng)];
+            return tryAndApplyAIMove(sel);
+        }
+        // else random
+        uniform_int_distribution<int> d(0, (int)all.size() - 1);
+        Candidate sel = all[d(rng)];
+        return tryAndApplyAIMove(sel);
+    }
+
+    // Apply AI candidate by mapping to current pieces and calling tryMove()
+    bool tryAndApplyAIMove(const Candidate& cand) {
+        // best-effort: use index from candidate if still valid; otherwise find same-name piece
+        int idx = -1;
+        if (cand.pieceIndex >= 0 && cand.pieceIndex < (int)pieces.size()) idx = cand.pieceIndex;
+        if (idx == -1) {
+            for (int i = 0; i < (int)pieces.size(); ++i) if (pieces[i]->getName() == pieces[cand.pieceIndex]->getName()) { idx = i; break; }
+        }
+        if (idx == -1) return false;
+        return tryMove(idx, cand.tr, cand.tc);
+    }
+
+    // compute legal moves for a piece (take into account self-check)
+    vector<tuple<int, int, bool>> computeLegalMovesForPiece(int index) {
+        vector<tuple<int, int, bool>> out;
+        if (index < 0 || index >= (int)pieces.size()) return out;
+        for (int r = 0; r < BOARD_SIZE; ++r) for (int c = 0; c < BOARD_SIZE; ++c) {
+            if (!pieces[index]->isValidMove(r, c, pieces)) continue;
+            if (pieces[index]->isSquareOccupiedBySameColor(r, c, pieces)) continue;
+            if (wouldMoveLeaveKingInCheck(index, r, c, pieces, textures)) continue;
+            bool isCap = false;
+            for (const auto& p : pieces) if (p->getRow() == r && p->getCol() == c && p->isWhite() != pieces[index]->isWhite()) { isCap = true; break; }
+            out.emplace_back(r, c, isCap);
+        }
+        return out;
+    }
+
+    // ---------- Main loop ----------
+    void run() {
+        while (window.isOpen()) {
+            processEvents();
+
+            // Handle AI thinking / timing (AI plays black when playWithAI)
+            if (state == GameState::PLAYING_AI && !gameOver) {
+                if (!whiteTurn) { // AI's turn (black)
+                    if (!aiThinking) {
+                        aiThinking = true; aiClock.restart();
+                    }
+                    else {
+                        if (aiClock.getElapsedTime().asSeconds() >= AI_THINK_SECONDS) {
+                            bool moved = makeAIMove(false);
+                            aiThinking = false;
+                            if (moved) {
+                                whiteTurn = !whiteTurn;
+                                // check for checks & endgame
+                                if (isKingInCheck(whiteTurn, pieces)) { /* optional console message */ }
+                                if (!hasLegalMove(whiteTurn, pieces, textures)) {
+                                    if (isKingInCheck(whiteTurn, pieces)) endGameMessage = string((whiteTurn ? "White" : "Black")) + " - Checkmate";
+                                    else endGameMessage = "Draw - Stalemate";
+                                    gameOver = true; state = GameState::GAME_OVER;
+                                }
+                            }
+                            else {
+                                // AI had no move: if king in check -> opponent wins by checkmate; else stalemate
+                                if (isKingInCheck(false, pieces)) endGameMessage = "White - Checkmate";
+                                else endGameMessage = "Draw - Stalemate";
+                                gameOver = true; state = GameState::GAME_OVER;
+                            }
                         }
                     }
-                    return true;
                 }
-                // Double move from starting position
-                else if (newRow == row + 2 * direction && !hasMoved) {
-                    // Check if both squares in front are empty
-                    bool pathClear = true;
-                    for (const auto& piece : pieces) {
-                        if (piece->getCol() == col &&
-                            ((piece->getRow() == row + direction) || (piece->getRow() == row + 2 * direction))) {
-                            pathClear = false;
-                            break;
+                else {
+                    aiThinking = false;
+                }
+            }
+
+            render();
+        }
+    }
+
+    // ---------- Event handling ----------
+    void processEvents() {
+        sf::Event e;
+        while (window.pollEvent(e)) {
+            if (e.type == sf::Event::Closed) window.close();
+            if (state == GameState::MAIN_MENU) handleMenuEvent(e);
+            else if (state == GameState::PLAYING_FRIEND || state == GameState::PLAYING_AI) handleGameEvent(e);
+            else if (state == GameState::GAME_OVER) handleGameOverEvent(e);
+        }
+    }
+
+    // Main menu events (hover + click on centered buttons)
+    void handleMenuEvent(const sf::Event& e) {
+        if (e.type == sf::Event::MouseMoved) {
+            playFriendBtn.updateHover((sf::Vector2f)sf::Mouse::getPosition(window));
+            playAIBtn.updateHover((sf::Vector2f)sf::Mouse::getPosition(window));
+            exitBtn.updateHover((sf::Vector2f)sf::Mouse::getPosition(window));
+        }
+        if (e.type == sf::Event::MouseButtonPressed && e.mouseButton.button == sf::Mouse::Left) {
+            sf::Vector2f mp = window.mapPixelToCoords({ e.mouseButton.x,e.mouseButton.y });
+            if (playFriendBtn.isClicked(mp)) startNewGame(false);
+            else if (playAIBtn.isClicked(mp)) startNewGame(true);
+            else if (exitBtn.isClicked(mp)) window.close();
+        }
+    }
+
+    // Game-over screen events (Back to menu button in sidebar)
+    void handleGameOverEvent(const sf::Event& e) {
+        if (e.type == sf::Event::MouseButtonPressed && e.mouseButton.button == sf::Mouse::Left) {
+            sf::Vector2f mp = window.mapPixelToCoords({ e.mouseButton.x,e.mouseButton.y });
+            if (backToMenuBtn.isClicked(mp)) {
+                state = GameState::MAIN_MENU;
+                endGameMessage.clear();
+            }
+        }
+        if (e.type == sf::Event::KeyPressed) {
+            if (e.key.code == sf::Keyboard::R) state = GameState::MAIN_MENU;
+            if (e.key.code == sf::Keyboard::U) undo();
+        }
+    }
+
+    // Handle gameplay events: drag/drop, keyboard shortcuts
+    void handleGameEvent(const sf::Event& e) {
+        if (e.type == sf::Event::MouseButtonPressed && e.mouseButton.button == sf::Mouse::Left) {
+            sf::Vector2f mp = window.mapPixelToCoords({ e.mouseButton.x,e.mouseButton.y });
+            float sx = TILE_SIZE * BOARD_SIZE;
+            // check sidebar back button click first
+            if (mp.x >= sx) {
+                if (backToMenuBtn.isClicked(mp)) { state = GameState::MAIN_MENU; return; }
+            }
+            // otherwise pick topmost piece on clicked square
+            int c = static_cast<int>(mp.x) / TILE_SIZE;
+            int r = static_cast<int>(mp.y) / TILE_SIZE;
+            if (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE) {
+                for (int i = (int)pieces.size() - 1; i >= 0; --i) {
+                    if (pieces[i]->getRow() == r && pieces[i]->getCol() == c) {
+                        if (pieces[i]->isWhite() == whiteTurn) {
+                            dragging = true; draggedIndex = i;
+                            dragOffset = pieces[i]->getSprite().getPosition() - mp;
                         }
-                    }
-                    return pathClear;
-                }
-            }
-            // Check for capture
-            else if (abs(newCol - col) == 1 && newRow == row + direction) {
-                // Check if there's an opponent's piece to capture
-                for (const auto& piece : pieces) {
-                    if (piece->getRow() == newRow && piece->getCol() == newCol && piece->isWhite() != this->isWhite()) {
-                        return true;
-                    }
-                }
-
-            }
-
-            return false;
-        }
-    };
-
-    class Rook : public Piece {
-    public:
-        Rook(const std::string& name, int row, int col, const sf::Texture& texture)
-            : Piece(name, row, col, texture) {
-        }
-
-        bool isValidMove(int newRow, int newCol, const std::vector<std::unique_ptr<Piece>>& pieces) const override {
-            // Rook moves straight in any direction
-            if (newRow != row && newCol != col) return false;
-
-            // Check if path is clear
-            if (!isPathClear(newRow, newCol, pieces)) return false;
-
-            // Check if destination is occupied by same color
-            return !isSquareOccupiedBySameColor(newRow, newCol, pieces);
-        }
-    };
-
-    class Knight : public Piece {
-    public:
-        Knight(const std::string& name, int row, int col, const sf::Texture& texture)
-            : Piece(name, row, col, texture) {
-        }
-
-        bool isValidMove(int newRow, int newCol, const std::vector<std::unique_ptr<Piece>>& pieces) const override {
-            // Knight moves in L-shape
-            int rowDiff = abs(newRow - row);
-            int colDiff = abs(newCol - col);
-
-            if (!((rowDiff == 2 && colDiff == 1) || (rowDiff == 1 && colDiff == 2))) {
-                return false;
-            }
-
-            // Check if destination is occupied by same color
-            return !isSquareOccupiedBySameColor(newRow, newCol, pieces);
-        }
-    };
-
-    class Bishop : public Piece {
-    public:
-        Bishop(const std::string& name, int row, int col, const sf::Texture& texture)
-            : Piece(name, row, col, texture) {
-        }
-
-        bool isValidMove(int newRow, int newCol, const std::vector<std::unique_ptr<Piece>>& pieces) const override {
-            // Bishop moves diagonally
-            if (abs(newRow - row) != abs(newCol - col)) return false;
-
-            // Check if path is clear
-            if (!isPathClear(newRow, newCol, pieces)) return false;
-
-            // Check if destination is occupied by same color
-            return !isSquareOccupiedBySameColor(newRow, newCol, pieces);
-        }
-    };
-
-    class Queen : public Piece {
-    public:
-        Queen(const std::string& name, int row, int col, const sf::Texture& texture)
-            : Piece(name, row, col, texture) {
-        }
-
-        bool isValidMove(int newRow, int newCol, const std::vector<std::unique_ptr<Piece>>& pieces) const override {
-            // Queen moves like rook or bishop
-            bool isStraight = (newRow == row || newCol == col);
-            bool isDiagonal = (abs(newRow - row) == abs(newCol - col));
-
-            if (!isStraight && !isDiagonal) return false;
-
-            // Check if path is clear
-            if (!isPathClear(newRow, newCol, pieces)) return false;
-
-            // Check if destination is occupied by same color
-            return !isSquareOccupiedBySameColor(newRow, newCol, pieces);
-        }
-    };
-
-    class King : public Piece {
-    public:
-        King(const std::string& name, int row, int col, const sf::Texture& texture)
-            : Piece(name, row, col, texture) {
-        }
-
-        bool isValidMove(int newRow, int newCol, const std::vector<std::unique_ptr<Piece>>& pieces) const override {
-            // King moves one square in any direction
-            int rowDiff = abs(newRow - row);
-            int colDiff = abs(newCol - col);
-
-            if (rowDiff > 1 || colDiff > 1) {
-                // TODO: Add castling logic here
-                return false;
-            }
-
-            // Check if destination is occupied by same color
-            return !isSquareOccupiedBySameColor(newRow, newCol, pieces);
-        }
-    };
-
-    std::vector<std::unique_ptr<Piece>> pieces; // All pieces in the game
-
-    // ======================
-   // Helper to add a piece
-   // ======================
-    auto addPiece = [&](const std::string& name, int row, int col) {
-        if (name.find("pawn") != std::string::npos) {
-            pieces.push_back(std::make_unique<Pawn>(name, row, col, pieceTextures[name]));
-        }
-        else if (name.find("rook") != std::string::npos) {
-            pieces.push_back(std::make_unique<Rook>(name, row, col, pieceTextures[name]));
-        }
-        else if (name.find("knight") != std::string::npos) {
-            pieces.push_back(std::make_unique<Knight>(name, row, col, pieceTextures[name]));
-        }
-        else if (name.find("bishop") != std::string::npos) {
-            pieces.push_back(std::make_unique<Bishop>(name, row, col, pieceTextures[name]));
-        }
-        else if (name.find("queen") != std::string::npos) {
-            pieces.push_back(std::make_unique<Queen>(name, row, col, pieceTextures[name]));
-        }
-        else if (name.find("king") != std::string::npos) {
-            pieces.push_back(std::make_unique<King>(name, row, col, pieceTextures[name]));
-        }
-        };
-
-
-    // Place black pieces
-    addPiece("b_rook", 0, 0);
-    addPiece("b_knight", 0, 1);
-    addPiece("b_bishop", 0, 2);
-    addPiece("b_queen", 0, 3);
-    addPiece("b_king", 0, 4);
-    addPiece("b_bishop", 0, 5);
-    addPiece("b_knight", 0, 6);
-    addPiece("b_rook", 0, 7);
-    for (int col = 0; col < 8; ++col)
-        addPiece("b_pawn", 1, col);
-
-
-    // Place white pieces
-    addPiece("w_rook", 7, 0);
-    addPiece("w_knight", 7, 1);
-    addPiece("w_bishop", 7, 2);
-    addPiece("w_queen", 7, 3);
-    addPiece("w_king", 7, 4);
-    addPiece("w_bishop", 7, 5);
-    addPiece("w_knight", 7, 6);
-    addPiece("w_rook", 7, 7);
-    for (int col = 0; col < 8; ++col)
-        addPiece("w_pawn", 6, col);
-
-    // =========================================================
-     // PHASE 2 VARIABLES: Drag-and-drop movement & turn handling
-     // =========================================================
-    bool isDragging = false;       // Are we currently dragging a piece?
-    int draggedIndex = -1;         // Index of the piece being dragged in 'pieces' vector
-    sf::Vector2f dragOffset;       // Distance between mouse click & piece position
-    bool whiteTurn = true;         // True if it's white's turn, false if black's
-
-    // ======================
-    // Main game loop
-    // ======================
-    while (window.isOpen()) {
-        sf::Event event;
-        while (window.pollEvent(event)) {
-            // Close window event
-            if (event.type == sf::Event::Closed)
-                window.close();
-
-            // ----------------------
-            // Mouse pressed: Start dragging
-            // ----------------------
-            if (event.type == sf::Event::MouseButtonPressed && event.mouseButton.button == sf::Mouse::Left) {
-                sf::Vector2f mousePos(event.mouseButton.x, event.mouseButton.y);
-
-                // Loop backwards so topmost piece is selected if stacked
-                for (int i = pieces.size() - 1; i >= 0; --i) {
-                    if (pieces[i]->getSprite().getGlobalBounds().contains(mousePos)) {
-                        // Only allow dragging of correct color piece
-                        if ((whiteTurn && pieces[i]->name[0] == 'w') ||
-                            (!whiteTurn && pieces[i]->name[0] == 'b')) {
-                            isDragging = true;
-                            draggedIndex = i;
-                            dragOffset = mousePos - pieces[i]->getSprite().getPosition(); // Remember offset
-                            break; // Stop checking once found
-                        }
+                        break;
                     }
                 }
             }
+        }
+        else if (e.type == sf::Event::MouseMoved) {
+            if (dragging && draggedIndex != -1) {
+                sf::Vector2f mp = window.mapPixelToCoords({ e.mouseMove.x, e.mouseMove.y });
+                pieces[draggedIndex]->getSprite().setPosition(mp + dragOffset);
+            }
+        }
+        else if (e.type == sf::Event::MouseButtonReleased && e.mouseButton.button == sf::Mouse::Left) {
+            if (!dragging) return;
+            sf::Vector2f mp = window.mapPixelToCoords({ e.mouseButton.x,e.mouseButton.y });
+            int c = static_cast<int>((mp.x + dragOffset.x) / TILE_SIZE);
+            int r = static_cast<int>((mp.y + dragOffset.y) / TILE_SIZE);
+            r = clamp(r, 0, BOARD_SIZE - 1);
+            c = clamp(c, 0, BOARD_SIZE - 1);
 
-            // ----------------------
-            // Mouse released: Snap to square
-            // ----------------------
-            if (event.type == sf::Event::MouseButtonReleased && event.mouseButton.button == sf::Mouse::Left) {
-                if (isDragging && draggedIndex != -1) {
-                    // Get center position of the dragged piece
-                    sf::Vector2f pos = pieces[draggedIndex]->getSprite().getPosition() +
-                        sf::Vector2f(TILE_SIZE / 2, TILE_SIZE / 2);
-
-                    // Convert to board coordinates
-                    int newCol = pos.x / TILE_SIZE;
-                    int newRow = pos.y / TILE_SIZE;
-
-                    // Keep inside the board
-                    if (newCol < 0) newCol = 0;
-                    if (newCol >= BOARD_SIZE) newCol = BOARD_SIZE - 1;
-                    if (newRow < 0) newRow = 0;
-                    if (newRow >= BOARD_SIZE) newRow = BOARD_SIZE - 1;
-
-                    // Snap the piece to the calculated square
-                    pieces[draggedIndex]->getSprite().setPosition(newCol* TILE_SIZE, newRow* TILE_SIZE);
-                    pieces[draggedIndex]->row = newRow;
-                    pieces[draggedIndex]->col = newCol;
-
-                    // Stop dragging
-                    isDragging = false;
-
-                    // Switch turn after move
-                    whiteTurn = !whiteTurn;
+            bool ok = tryMove(draggedIndex, r, c);
+            if (ok) {
+                whiteTurn = !whiteTurn;
+                if (playWithAI && !whiteTurn) { aiThinking = true; aiClock.restart(); }
+                if (isKingInCheck(whiteTurn, pieces)) { /* check notification can go here */ }
+                if (!hasLegalMove(whiteTurn, pieces, textures)) {
+                    if (isKingInCheck(whiteTurn, pieces)) endGameMessage = string((whiteTurn ? "White" : "Black")) + " - Checkmate";
+                    else endGameMessage = "Draw - Stalemate";
+                    gameOver = true; state = GameState::GAME_OVER;
                 }
             }
-
-            // ----------------------
-            // Mouse moved: Update piece position while dragging
-            // ----------------------
-            if (event.type == sf::Event::MouseMoved) {
-                if (isDragging && draggedIndex != -1) {
-                    sf::Vector2f mousePos(event.mouseMove.x, event.mouseMove.y);
-                    // Move piece with mouse, keeping the click offset
-                    pieces[draggedIndex]->getSprite().setPosition(mousePos - dragOffset);
-                }
+            else {
+                // invalid move -> snap back
+                if (draggedIndex >= 0 && draggedIndex < (int)pieces.size()) pieces[draggedIndex]->setPosition(pieces[draggedIndex]->getRow(), pieces[draggedIndex]->getCol());
             }
+            dragging = false; draggedIndex = -1;
         }
-
-        // ======================
-        // Drawing section
-        // ======================
-        window.clear();
-
-        // Draw chessboard
-        for (int row = 0; row < BOARD_SIZE; ++row) {
-            for (int col = 0; col < BOARD_SIZE; ++col) {
-                sf::RectangleShape square(sf::Vector2f(TILE_SIZE, TILE_SIZE));
-                square.setPosition(static_cast<float>(col) * static_cast<float>(TILE_SIZE), static_cast<float>(row) * static_cast<float>(TILE_SIZE));
-                square.setFillColor((row + col) % 2 == 0 ? lightSquare : darkSquare);
-                window.draw(square);
-            }
+        else if (e.type == sf::Event::KeyPressed) {
+            if (e.key.code == sf::Keyboard::U) undo();
+            else if (e.key.code == sf::Keyboard::S) saveToFile("chess_save.txt");
+            else if (e.key.code == sf::Keyboard::L) loadFromFile("chess_save.txt");
+            else if (e.key.code == sf::Keyboard::R) startNewGame(playWithAI);
+            else if (e.key.code == sf::Keyboard::Escape) state = GameState::MAIN_MENU;
         }
+    }
 
-        // Draw all pieces (dragged piece drawn last so it appears on top)
-        for (int i = 0; i < pieces.size(); ++i) {
-            if (i != draggedIndex)
-                window.draw(pieces[i]->getSprite()); // Draw all except the one being dragged
+    // ---------- Rendering ----------
+    void render() {
+        window.clear(sf::Color(40, 40, 40));
+        if (state == GameState::MAIN_MENU) renderMainMenu();
+        else {
+            renderBoardAndSidebar();
+            // highlight valid moves for current dragged piece
+            if (dragging && draggedIndex != -1) drawHighlightsForPiece(draggedIndex);
+            // if game over, overlay message
+            if (state == GameState::GAME_OVER) renderGameOverOverlay();
         }
-        if (draggedIndex != -1)
-            window.draw(pieces[draggedIndex]->getSprite()); // Draw dragged piece on top
-
         window.display();
     }
+
+    // Render main menu: lime background, centered title & buttons (vertical centered)
+    void renderMainMenu() {
+        // lime background (bright)
+        sf::RectangleShape bg(sf::Vector2f((float)window.getSize().x, (float)window.getSize().y));
+        bg.setFillColor(sf::Color(50, 205, 50)); // lime green
+        window.draw(bg);
+
+        // compute center area (exclude sidebar)
+        float leftAreaW = (float)(window.getSize().x - SIDEBAR_WIDTH);
+        // center title horizontally and position vertically around 20% down
+        sf::FloatRect tb = titleText.getLocalBounds();
+        titleText.setPosition(leftAreaW / 2.f - tb.width / 2.f, leftAreaW * 0.08f + 40.f); // small vertical offset
+        titleText.setFillColor(sf::Color::Black);
+        window.draw(titleText);
+
+        // subtitle centered under title
+        sf::FloatRect sb = subText.getLocalBounds();
+        subText.setPosition(leftAreaW / 2.f - sb.width / 2.f, titleText.getPosition().y + tb.height + 18.f);
+        subText.setFillColor(sf::Color(10, 10, 10));
+        window.draw(subText);
+
+        // draw buttons (already positioned centered in setupMenuUI)
+        playFriendBtn.draw(window);
+        playAIBtn.draw(window);
+        exitBtn.draw(window);
+
+        // footer centered bottom-left area
+        footerText.setPosition(20.f, (float)window.getSize().y - 30.f);
+        window.draw(footerText);
+    }
+
+    // Render board and right sidebar
+    void renderBoardAndSidebar() {
+        // board squares
+        for (int r = 0; r < BOARD_SIZE; ++r) for (int c = 0; c < BOARD_SIZE; ++c) window.draw(squares[r][c]);
+        // pieces
+        for (int i = 0; i < (int)pieces.size(); ++i) if (i != draggedIndex) window.draw(pieces[i]->getSprite());
+        if (draggedIndex != -1 && draggedIndex < (int)pieces.size()) window.draw(pieces[draggedIndex]->getSprite());
+        // sidebar contents (turn, mode, piece points, controls, back button)
+        drawSidebar();
+    }
+
+    // Draw sidebar: turn, mode, piece-point table, controls, back button (no overlap)
+    void drawSidebar() {
+        float sx = TILE_SIZE * BOARD_SIZE;
+        sf::RectangleShape sidebar(sf::Vector2f((float)SIDEBAR_WIDTH, (float)TILE_SIZE * BOARD_SIZE));
+        sidebar.setPosition(sx, 0);
+        sidebar.setFillColor(sf::Color(40, 40, 40));
+        window.draw(sidebar);
+
+        // Turn text
+        sf::Text tturn("Turn: " + string(whiteTurn ? "White" : "Black"), font, 20);
+        tturn.setFillColor(sf::Color::White);
+        tturn.setPosition(sx + 12.f, 12.f);
+        window.draw(tturn);
+
+        // Mode text
+        sf::Text tmode("Mode: " + string(playWithAI ? "Play vs AI" : "2 Players"), font, 16);
+        tmode.setFillColor(sf::Color(200, 200, 200));
+        tmode.setPosition(sx + 12.f, 44.f);
+        window.draw(tmode);
+
+        // Piece points title
+        float pointsY = 84.f;
+        sf::Text ptitle("Piece Points", font, 18);
+        ptitle.setFillColor(sf::Color::White);
+        ptitle.setPosition(sx + 12.f, pointsY);
+        window.draw(ptitle);
+
+        // Table of piece values (kept compact, no overlap)
+        float rowY = pointsY + 28.f;
+        vector<pair<string, int>> table = { {"Pawn", 1}, {"Knight", 3}, {"Bishop", 3}, {"Rook", 5}, {"Queen", 9}, {"King", 100} };
+        for (auto& entry : table) {
+            string label = entry.first;
+            int val = entry.second;
+            sf::Text t(label + ":", font, 16); t.setFillColor(sf::Color::White);
+            t.setPosition(sx + 12.f, rowY);
+            window.draw(t);
+            sf::Text v(to_string(val), font, 16); v.setFillColor(sf::Color::Yellow);
+            sf::FloatRect vb = v.getLocalBounds();
+            v.setPosition(sx + SIDEBAR_WIDTH - 16.f - vb.width, rowY); // right align value within sidebar
+            window.draw(v);
+            rowY += 22.f; // spacing between rows
+        }
+
+        // Controls (below points)
+        sf::Text ctrl("Controls:\nDrag pieces\nU:Undo  S:Save  L:Load\nR:Restart  Esc:Menu", font, 14);
+        ctrl.setFillColor(sf::Color::White);
+        ctrl.setPosition(sx + 12.f, rowY + 12.f);
+        window.draw(ctrl);
+
+        // Back to menu button inside sidebar
+        backToMenuBtn.draw(window);
+    }
+
+    // draw highlight markers for legal moves of selected piece
+    void drawHighlightsForPiece(int pieceIndex) {
+        auto moves = computeLegalMovesForPiece(pieceIndex);
+        for (auto& t : moves) {
+            int r = get<0>(t), c = get<1>(t); bool isCap = get<2>(t);
+            sf::Vector2f center((c + 0.5f) * TILE_SIZE, (r + 0.5f) * TILE_SIZE);
+            if (!isCap) {
+                // small filled circle
+                sf::CircleShape circle(TILE_SIZE * 0.12f);
+                circle.setOrigin(circle.getRadius(), circle.getRadius());
+                circle.setPosition(center);
+                circle.setFillColor(sf::Color(30, 180, 30, 180)); // semi-transparent green
+                window.draw(circle);
+            }
+            else {
+                // red capture rectangle outline
+                sf::RectangleShape rect(sf::Vector2f((float)TILE_SIZE - 8.f, (float)TILE_SIZE - 8.f));
+                rect.setPosition((float)c * TILE_SIZE + 4.f, (float)r * TILE_SIZE + 4.f);
+                rect.setFillColor(sf::Color(0, 0, 0, 0));
+                rect.setOutlineColor(sf::Color(220, 20, 60)); rect.setOutlineThickness(4.f);
+                window.draw(rect);
+            }
+        }
+    }
+
+    // render overlay explaining end-of-game (who won + reason)
+    void renderGameOverOverlay() {
+        // darken board area
+        sf::RectangleShape overlay(sf::Vector2f((float)TILE_SIZE * BOARD_SIZE, (float)TILE_SIZE * BOARD_SIZE));
+        overlay.setFillColor(sf::Color(0, 0, 0, 150));
+        window.draw(overlay);
+
+        // main message
+        string msg = endGameMessage.empty() ? "Game Over" : endGameMessage;
+        sf::Text t(msg, font, 48); t.setFillColor(sf::Color::White);
+        sf::FloatRect tb = t.getLocalBounds();
+        t.setPosition((TILE_SIZE * BOARD_SIZE - tb.width) / 2.f, (TILE_SIZE * BOARD_SIZE - tb.height) / 2.f - 40.f);
+        window.draw(t);
+
+        // reason below
+        string reason;
+        if (msg.find("Checkmate") != string::npos) reason = "Checkmate — King is attacked and has no legal moves.";
+        else if (msg.find("Stalemate") != string::npos) reason = "Stalemate — side has no legal moves but is not in check.";
+        else reason = "Game finished.";
+        sf::Text rtext(reason, font, 18); rtext.setFillColor(sf::Color::White);
+        sf::FloatRect rb = rtext.getLocalBounds();
+        rtext.setPosition((TILE_SIZE * BOARD_SIZE - rb.width) / 2.f, (TILE_SIZE * BOARD_SIZE - rb.height) / 2.f + 20.f);
+        window.draw(rtext);
+    }
+};
+
+// ---------- main ----------
+int main() {
+    try {
+        ChessGame game;
+        game.run();
+    }
+    catch (const exception& ex) {
+        cerr << "Fatal: " << ex.what() << endl;
+        return 1;
+    }
+    return 0;
 }
