@@ -21,9 +21,6 @@
     <ClCompile Include="Chess_Project.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Source.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Image Include="Assets\b_bishop.png">

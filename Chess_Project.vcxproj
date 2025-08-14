@@ -135,7 +135,6 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Chess_Project.cpp" />
-    <ClCompile Include="Source.cpp" />
   </ItemGroup>
   <ItemGroup>
     <Image Include="Assets\b_bishop.png" />

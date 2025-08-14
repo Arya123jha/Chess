@@ -1,12 +1,4 @@
-﻿// chess_with_menu_ai_final.cpp
-// SFML Chess single-file program with:
-//  - Centered main menu (lime background)
-//  - Play vs Friend / Play vs AI
-//  - AI thinking delay, valid-move highlighting, check/checkmate/stalemate detection
-//  - Sidebar with piece point values (no overlap)
-//  - Using OOP, and `using namespace std;` per request
-
-#include <SFML/Graphics.hpp>
+﻿#include <SFML/Graphics.hpp>
 #include <map>
 #include <string>
 #include <vector>
@@ -20,7 +12,7 @@
 #include <random>
 #include <ctime>
 
-using namespace std; // per request: allow omission of std:: prefixes
+using namespace std;
 
 // ---------- Constants ----------
 const int TILE_SIZE = 80;                // size of board tile in pixels
@@ -344,9 +336,11 @@ class ChessGame {
 public:
     sf::RenderWindow window;               // main window
     sf::Font font;                         // font for UI
-    map<string, sf::Texture> textures;      // piece textures
+    map<string, sf::Texture> textures;     // piece textures
     vector<unique_ptr<Piece>> pieces;      // current board pieces
     sf::RectangleShape squares[BOARD_SIZE][BOARD_SIZE]; // board squares visuals
+    sf::Color baseLightColor = sf::Color(240, 217, 181);
+    sf::Color baseDarkColor = sf::Color(181, 136, 99);
 
     // UI elements
     Button playFriendBtn, playAIBtn, exitBtn, backToMenuBtn;
@@ -383,6 +377,10 @@ public:
     // end game message (displayed on overlay)
     string endGameMessage;
 
+    // NEW: captured pieces trackers
+    vector<string> capturedByWhite; // white captured black pieces
+    vector<string> capturedByBlack; // black captured white pieces
+
     // Constructor
     ChessGame() : window(sf::VideoMode(TILE_SIZE* BOARD_SIZE + SIDEBAR_WIDTH, TILE_SIZE* BOARD_SIZE), "SFML Chess") {
         rng.seed((unsigned)time(nullptr));
@@ -396,7 +394,7 @@ public:
     // Load textures (Assets/w_pawn.png etc.)
     void loadTextures() {
         vector<string> names = { "w_pawn","w_rook","w_knight","w_bishop","w_queen","w_king",
-                                "b_pawn","b_rook","b_knight","b_bishop","b_queen","b_king" };
+                                 "b_pawn","b_rook","b_knight","b_bishop","b_queen","b_king" };
         for (auto& n : names) {
             sf::Texture t;
             string path = "Assets/" + n + ".png";
@@ -414,8 +412,7 @@ public:
             squares[r][c].setSize({ (float)TILE_SIZE,(float)TILE_SIZE });
             squares[r][c].setPosition(c * TILE_SIZE, r * TILE_SIZE);
             bool light = (r + c) % 2 == 0;
-            // classic beige/brown board
-            squares[r][c].setFillColor(light ? sf::Color(240, 217, 181) : sf::Color(181, 136, 99));
+            squares[r][c].setFillColor(light ? baseLightColor : baseDarkColor);
         }
 
         titleText.setFont(font); titleText.setCharacterSize(64); titleText.setFillColor(sf::Color::Black);
@@ -428,19 +425,28 @@ public:
         footerText.setString("Drag pieces | U:Undo  S:Save  L:Load  R:Restart  Esc:Menu");
     }
 
-    // Setup centered menu buttons & sidebar back button
+    // Setup centered menu buttons (fully centered on the full window, not the left area)
     void setupMenuUI() {
-        // center area excludes sidebar: width = window - sidebar
-        float centerAreaWidth = (window.getSize().x - SIDEBAR_WIDTH);
-        float centerX = centerAreaWidth / 2.f;
         // Buttons width 360, height 72
         float btnW = 360.f, btnH = 72.f;
-        playFriendBtn = Button("Play with Friend", font, { centerX - btnW / 2.f, 260.f }, { btnW, btnH }, 28);
-        playAIBtn = Button("Play with AI", font, { centerX - btnW / 2.f, 360.f }, { btnW, btnH }, 28);
-        exitBtn = Button("Exit", font, { centerX - btnW / 2.f, 460.f }, { btnW, btnH }, 28);
+        float centerX = window.getSize().x / 2.f;
+        float centerY = window.getSize().y / 2.f;
+
+        // Buttons stacked vertically with pleasing gaps
+        playFriendBtn = Button("Play with Friend", font,
+            { centerX - btnW / 2.f, centerY - btnH - 10.f },
+            { btnW, btnH }, 28);
+        playAIBtn = Button("Play with AI", font,
+            { centerX - btnW / 2.f, centerY + 10.f },
+            { btnW, btnH }, 28);
+        exitBtn = Button("Exit", font,
+            { centerX - btnW / 2.f, centerY + btnH + 30.f },
+            { btnW, btnH }, 28);
 
         float sx = TILE_SIZE * BOARD_SIZE;
-        backToMenuBtn = Button("Back to Menu", font, { sx + 12.f, (float)window.getSize().y - 80.f }, { SIDEBAR_WIDTH - 24.f, 60.f }, 22);
+        backToMenuBtn = Button("Back to Menu", font,
+            { sx + 12.f, (float)window.getSize().y - 80.f },
+            { SIDEBAR_WIDTH - 24.f, 60.f }, 22);
     }
 
     // Add piece helper
@@ -452,6 +458,7 @@ public:
     void startNewGame(bool vsAI) {
         pieces.clear(); playWithAI = vsAI; whiteTurn = true; gameOver = false; aiThinking = false;
         enPassantTarget = { -1,-1 }; endGameMessage.clear(); historyStates.clear();
+        capturedByWhite.clear(); capturedByBlack.clear();
 
         // Black pieces
         addPiece("b_rook", 0, 0); addPiece("b_knight", 0, 1); addPiece("b_bishop", 0, 2); addPiece("b_queen", 0, 3);
@@ -476,6 +483,9 @@ public:
         pieces = clonePieces(historyStates.back(), textures);
         whiteTurn = !whiteTurn;
         gameOver = false; aiThinking = false; enPassantTarget = { -1,-1 }; endGameMessage.clear();
+
+        // NOTE: For simplicity, captured lists are not time-travelled by undo.
+        // If you want, you can snapshot and restore capturedByWhite/Black similarly to pieces.
     }
 
     // Simple save/load
@@ -485,6 +495,13 @@ public:
         ofs << (whiteTurn ? 1 : 0) << "\n";
         ofs << pieces.size() << "\n";
         for (auto& p : pieces) ofs << p->getName() << " " << p->getRow() << " " << p->getCol() << " " << p->getHasMoved() << "\n";
+
+        // persist captured pieces lists
+        ofs << "CAPW " << capturedByWhite.size() << "\n";
+        for (auto& s : capturedByWhite) ofs << s << "\n";
+        ofs << "CAPB " << capturedByBlack.size() << "\n";
+        for (auto& s : capturedByBlack) ofs << s << "\n";
+
         cerr << "Saved " << fname << "\n";
     }
     void loadFromFile(const string& fname) {
@@ -493,6 +510,24 @@ public:
         pieces.clear(); int wt; ifs >> wt; whiteTurn = wt == 1;
         int n; ifs >> n;
         for (int i = 0; i < n; ++i) { string nm; int r, c; bool hm; ifs >> nm >> r >> c >> hm; pieces.push_back(createPieceFromName(nm, r, c, textures)); pieces.back()->hasMoved = hm; }
+
+        // try to read captured lists if present
+        capturedByWhite.clear(); capturedByBlack.clear();
+        string tag;
+        if (ifs >> tag) {
+            if (tag == "CAPW") {
+                size_t m; ifs >> m;
+                string line; getline(ifs, line); // consume endline
+                for (size_t i = 0; i < m; ++i) { string s; getline(ifs, s); if (!s.empty()) capturedByWhite.push_back(s); }
+                ifs >> tag;
+            }
+            if (tag == "CAPB") {
+                size_t m; ifs >> m;
+                string line; getline(ifs, line);
+                for (size_t i = 0; i < m; ++i) { string s; getline(ifs, s); if (!s.empty()) capturedByBlack.push_back(s); }
+            }
+        }
+
         historyStates.clear(); saveState();
         state = playWithAI ? GameState::PLAYING_AI : GameState::PLAYING_FRIEND; endGameMessage.clear();
     }
@@ -505,13 +540,16 @@ public:
         if (moving->isSquareOccupiedBySameColor(toR, toC, pieces)) return false;
         if (wouldMoveLeaveKingInCheck(pieceIndex, toR, toC, pieces, textures)) return false;
 
-        // en-passant capture
+        // handle en-passant capture
         if (moving->getName().find("pawn") != string::npos && abs(toC - moving->getCol()) == 1 &&
             none_of(pieces.begin(), pieces.end(), [&](const unique_ptr<Piece>& p) { return p->getRow() == toR && p->getCol() == toC; })) {
             if (enPassantTarget.first == toR && enPassantTarget.second == toC) {
                 int victimRow = moving->getRow(), victimCol = toC;
                 for (int i = 0; i < (int)pieces.size(); ++i) {
-                    if (pieces[i]->getRow() == victimRow && pieces[i]->getCol() == victimCol && pieces[i]->getName().find("pawn") != string::npos && pieces[i]->isWhite() != moving->isWhite()) {
+                    if (pieces[i]->getRow() == victimRow && pieces[i]->getCol() == victimCol &&
+                        pieces[i]->getName().find("pawn") != string::npos && pieces[i]->isWhite() != moving->isWhite()) {
+                        // record captured name before erase
+                        recordCapture(moving->isWhite(), pieces[i]->getName());
                         pieces.erase(pieces.begin() + i);
                         if (i < pieceIndex) --pieceIndex;
                         break;
@@ -523,6 +561,8 @@ public:
         // capture on destination
         for (int i = 0; i < (int)pieces.size(); ++i) {
             if (i != pieceIndex && pieces[i]->getRow() == toR && pieces[i]->getCol() == toC) {
+                // record captured name before erase
+                recordCapture(moving->isWhite(), pieces[i]->getName());
                 pieces.erase(pieces.begin() + i);
                 if (i < pieceIndex) --pieceIndex;
                 break;
@@ -624,6 +664,54 @@ public:
         return out;
     }
 
+    // Update squares' colors to default and mark king tiles red if in check
+    void updateCheckHighlights() {
+        // reset board colors
+        for (int r = 0; r < BOARD_SIZE; ++r) {
+            for (int c = 0; c < BOARD_SIZE; ++c) {
+                bool light = (r + c) % 2 == 0;
+                squares[r][c].setFillColor(light ? baseLightColor : baseDarkColor);
+            }
+        }
+        // find white king and black king and mark attacked squares red
+        auto wk = findKingPos(true, pieces);
+        if (wk.first != -1) {
+            if (isSquareAttacked(wk.first, wk.second, false, pieces)) {
+                squares[wk.first][wk.second].setFillColor(sf::Color(220, 20, 60)); // red
+            }
+        }
+        auto bk = findKingPos(false, pieces);
+        if (bk.first != -1) {
+            if (isSquareAttacked(bk.first, bk.second, true, pieces)) {
+                squares[bk.first][bk.second].setFillColor(sf::Color(220, 20, 60)); // red
+            }
+        }
+    }
+
+    // Draw red outline around king(s) that are currently in check
+    void drawKingCheckOutlines() {
+        // white king attacked by black?
+        auto wk = findKingPos(true, pieces);
+        if (wk.first != -1 && isSquareAttacked(wk.first, wk.second, false, pieces)) {
+            sf::RectangleShape rect(sf::Vector2f((float)TILE_SIZE - 8.f, (float)TILE_SIZE - 8.f));
+            rect.setPosition((float)wk.second * TILE_SIZE + 4.f, (float)wk.first * TILE_SIZE + 4.f);
+            rect.setFillColor(sf::Color(0, 0, 0, 0));
+            rect.setOutlineColor(sf::Color(220, 20, 60));
+            rect.setOutlineThickness(4.f);
+            window.draw(rect);
+        }
+        // black king attacked by white?
+        auto bk = findKingPos(false, pieces);
+        if (bk.first != -1 && isSquareAttacked(bk.first, bk.second, true, pieces)) {
+            sf::RectangleShape rect(sf::Vector2f((float)TILE_SIZE - 8.f, (float)TILE_SIZE - 8.f));
+            rect.setPosition((float)bk.second * TILE_SIZE + 4.f, (float)bk.first * TILE_SIZE + 4.f);
+            rect.setFillColor(sf::Color(0, 0, 0, 0));
+            rect.setOutlineColor(sf::Color(220, 20, 60));
+            rect.setOutlineThickness(4.f);
+            window.draw(rect);
+        }
+    }
+
     // ---------- Main loop ----------
     void run() {
         while (window.isOpen()) {
@@ -650,7 +738,7 @@ public:
                                 }
                             }
                             else {
-                                // AI had no move: if king in check -> opponent wins by checkmate; else stalemate
+                                // AI had no move
                                 if (isKingInCheck(false, pieces)) endGameMessage = "White - Checkmate";
                                 else endGameMessage = "Draw - Stalemate";
                                 gameOver = true; state = GameState::GAME_OVER;
@@ -780,55 +868,90 @@ public:
             renderBoardAndSidebar();
             // highlight valid moves for current dragged piece
             if (dragging && draggedIndex != -1) drawHighlightsForPiece(draggedIndex);
+            // draw king outlines if in check (on top of pieces)
+            drawKingCheckOutlines();
             // if game over, overlay message
             if (state == GameState::GAME_OVER) renderGameOverOverlay();
         }
         window.display();
     }
 
-    // Render main menu: lime background, centered title & buttons (vertical centered)
+    // Render main menu: soft background, truly centered title & buttons
     void renderMainMenu() {
-        // lime background (bright)
+        // pleasant background
         sf::RectangleShape bg(sf::Vector2f((float)window.getSize().x, (float)window.getSize().y));
-        bg.setFillColor(sf::Color(50, 205, 50)); // lime green
+        bg.setFillColor(sf::Color(230, 240, 230));
         window.draw(bg);
 
-        // compute center area (exclude sidebar)
-        float leftAreaW = (float)(window.getSize().x - SIDEBAR_WIDTH);
-        // center title horizontally and position vertically around 20% down
+        // center title horizontally; place a bit above center
         sf::FloatRect tb = titleText.getLocalBounds();
-        titleText.setPosition(leftAreaW / 2.f - tb.width / 2.f, leftAreaW * 0.08f + 40.f); // small vertical offset
-        titleText.setFillColor(sf::Color::Black);
+        float centerX = window.getSize().x / 2.f;
+        float centerY = window.getSize().y / 2.f;
+
+        titleText.setPosition(centerX - tb.width / 2.f, centerY - 200.f);
+        titleText.setFillColor(sf::Color(20, 20, 20));
         window.draw(titleText);
 
         // subtitle centered under title
         sf::FloatRect sb = subText.getLocalBounds();
-        subText.setPosition(leftAreaW / 2.f - sb.width / 2.f, titleText.getPosition().y + tb.height + 18.f);
-        subText.setFillColor(sf::Color(10, 10, 10));
+        subText.setPosition(centerX - sb.width / 2.f, titleText.getPosition().y + tb.height + 18.f);
+        subText.setFillColor(sf::Color(60, 60, 60));
         window.draw(subText);
 
-        // draw buttons (already positioned centered in setupMenuUI)
+        // draw buttons (positions defined relative to full window center in setupMenuUI)
         playFriendBtn.draw(window);
         playAIBtn.draw(window);
         exitBtn.draw(window);
 
-        // footer centered bottom-left area
-        footerText.setPosition(20.f, (float)window.getSize().y - 30.f);
+        // footer centered at bottom
+        sf::FloatRect fb = footerText.getLocalBounds();
+        footerText.setPosition(centerX - fb.width / 2.f, (float)window.getSize().y - 30.f);
+        footerText.setFillColor(sf::Color(80, 80, 80));
         window.draw(footerText);
     }
 
     // Render board and right sidebar
     void renderBoardAndSidebar() {
+        // update check-highlights before drawing squares
+        updateCheckHighlights();
+
         // board squares
         for (int r = 0; r < BOARD_SIZE; ++r) for (int c = 0; c < BOARD_SIZE; ++c) window.draw(squares[r][c]);
         // pieces
         for (int i = 0; i < (int)pieces.size(); ++i) if (i != draggedIndex) window.draw(pieces[i]->getSprite());
         if (draggedIndex != -1 && draggedIndex < (int)pieces.size()) window.draw(pieces[draggedIndex]->getSprite());
-        // sidebar contents (turn, mode, piece points, controls, back button)
+        // sidebar contents (turn, mode, captured pieces, controls, back button)
         drawSidebar();
     }
 
-    // Draw sidebar: turn, mode, piece-point table, controls, back button (no overlap)
+    // Draw small sprites in rows inside the sidebar for captured pieces
+    void drawCapturedRow(float startX, float& y, const vector<string>& captured, float iconSize = 36.f, float padding = 6.f) {
+        float x = startX;
+        float maxW = (float)SIDEBAR_WIDTH - 24.f;
+        float step = iconSize + padding;
+        for (size_t i = 0; i < captured.size(); ++i) {
+            auto it = textures.find(captured[i]);
+            if (it == textures.end()) continue;
+            sf::Sprite s(it->second);
+            // scale sprite to iconSize
+            sf::FloatRect lb = s.getLocalBounds();
+            if (lb.width > 0.f && lb.height > 0.f) {
+                float scale = min(iconSize / lb.width, iconSize / lb.height);
+                s.setScale(scale, scale);
+            }
+            s.setPosition(startX + (float)((int)(x - startX) % (int)maxW), y);
+            window.draw(s);
+
+            x += step;
+            if (x - startX + iconSize > maxW) { // wrap
+                x = startX;
+                y += iconSize + padding;
+            }
+        }
+        y += iconSize + padding * 0.5f; // extra space after the row block
+    }
+
+    // Draw sidebar: turn, mode, captured pieces, controls, back button
     void drawSidebar() {
         float sx = TILE_SIZE * BOARD_SIZE;
         sf::RectangleShape sidebar(sf::Vector2f((float)SIDEBAR_WIDTH, (float)TILE_SIZE * BOARD_SIZE));
@@ -836,45 +959,50 @@ public:
         sidebar.setFillColor(sf::Color(40, 40, 40));
         window.draw(sidebar);
 
-        // Turn text
+        float y = 12.f;
+
+        // Turn
         sf::Text tturn("Turn: " + string(whiteTurn ? "White" : "Black"), font, 20);
         tturn.setFillColor(sf::Color::White);
-        tturn.setPosition(sx + 12.f, 12.f);
+        tturn.setPosition(sx + 12.f, y);
         window.draw(tturn);
+        y += 28.f;
 
-        // Mode text
+        // Mode
         sf::Text tmode("Mode: " + string(playWithAI ? "Play vs AI" : "2 Players"), font, 16);
         tmode.setFillColor(sf::Color(200, 200, 200));
-        tmode.setPosition(sx + 12.f, 44.f);
+        tmode.setPosition(sx + 12.f, y);
         window.draw(tmode);
+        y += 34.f;
 
-        // Piece points title
-        float pointsY = 84.f;
-        sf::Text ptitle("Piece Points", font, 18);
-        ptitle.setFillColor(sf::Color::White);
-        ptitle.setPosition(sx + 12.f, pointsY);
-        window.draw(ptitle);
-
-        // Table of piece values (kept compact, no overlap)
-        float rowY = pointsY + 28.f;
-        vector<pair<string, int>> table = { {"Pawn", 1}, {"Knight", 3}, {"Bishop", 3}, {"Rook", 5}, {"Queen", 9}, {"King", 100} };
-        for (auto& entry : table) {
-            string label = entry.first;
-            int val = entry.second;
-            sf::Text t(label + ":", font, 16); t.setFillColor(sf::Color::White);
-            t.setPosition(sx + 12.f, rowY);
-            window.draw(t);
-            sf::Text v(to_string(val), font, 16); v.setFillColor(sf::Color::Yellow);
-            sf::FloatRect vb = v.getLocalBounds();
-            v.setPosition(sx + SIDEBAR_WIDTH - 16.f - vb.width, rowY); // right align value within sidebar
-            window.draw(v);
-            rowY += 22.f; // spacing between rows
+        // ---- Captured by White (i.e., black pieces taken) ----
+        {
+            sf::Text head("Captured by White", font, 16);
+            head.setFillColor(sf::Color(255, 215, 0));
+            head.setPosition(sx + 12.f, y);
+            window.draw(head);
+            y += 22.f;
+            float rowY = y;
+            drawCapturedRow(sx + 12.f, rowY, capturedByWhite, 36.f, 6.f);
+            y = rowY + 6.f;
         }
 
-        // Controls (below points)
+        // ---- Captured by Black (i.e., white pieces taken) ----
+        {
+            sf::Text head("Captured by Black", font, 16);
+            head.setFillColor(sf::Color(173, 216, 230));
+            head.setPosition(sx + 12.f, y);
+            window.draw(head);
+            y += 22.f;
+            float rowY = y;
+            drawCapturedRow(sx + 12.f, rowY, capturedByBlack, 36.f, 6.f);
+            y = rowY + 6.f;
+        }
+
+        // Controls
         sf::Text ctrl("Controls:\nDrag pieces\nU:Undo  S:Save  L:Load\nR:Restart  Esc:Menu", font, 14);
         ctrl.setFillColor(sf::Color::White);
-        ctrl.setPosition(sx + 12.f, rowY + 12.f);
+        ctrl.setPosition(sx + 12.f, max(y + 8.f, (float)TILE_SIZE * BOARD_SIZE - 180.f));
         window.draw(ctrl);
 
         // Back to menu button inside sidebar
@@ -929,6 +1057,14 @@ public:
         sf::FloatRect rb = rtext.getLocalBounds();
         rtext.setPosition((TILE_SIZE * BOARD_SIZE - rb.width) / 2.f, (TILE_SIZE * BOARD_SIZE - rb.height) / 2.f + 20.f);
         window.draw(rtext);
+    }
+
+private:
+    // helper to push captured piece into the correct list
+    void recordCapture(bool capturerIsWhite, const string& capturedName) {
+        // Normalize captured name to texture keys (already like "b_pawn" etc.)
+        if (capturerIsWhite) capturedByWhite.push_back(capturedName); // white captured black piece
+        else capturedByBlack.push_back(capturedName);                 // black captured white piece
     }
 };
 
