@@ -1,5 +1,10 @@
+<<<<<<< HEAD
 #include "ChessGame.h"
 #include <iostream>
+=======
+#include "chessgame.h"
+#include <iostream> 
+>>>>>>> 11ed285900d2ae6925459c826014a259e6eb0b8a
 
 int main() {
     try {

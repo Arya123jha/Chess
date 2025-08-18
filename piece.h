@@ -1,13 +1,26 @@
+<<<<<<< HEAD
 #pragma once
+=======
+#ifndef PIECE_H
+#define PIECE_H
+
+>>>>>>> 11ed285900d2ae6925459c826014a259e6eb0b8a
 #include <SFML/Graphics.hpp>
 #include <vector>
 #include <memory>
 #include <string>
+<<<<<<< HEAD
 #include "Constants.h"
 
 using namespace std;
 using namespace Chess;
 
+=======
+#include <map>
+#include "constants.h"
+
+using namespace std;
+>>>>>>> 11ed285900d2ae6925459c826014a259e6eb0b8a
 
 class Piece {
 public:
@@ -77,4 +90,10 @@ bool wouldMoveLeaveKingInCheck(int pieceIndex, int toRow, int toCol, const vecto
 bool hasLegalMove(bool white, const vector<unique_ptr<Piece>>& pieces, const map<string, sf::Texture>& textures);
 string coordToAlgebraic(int row, int col);
 char pieceToLetter(const string& name);
+<<<<<<< HEAD
 int pieceValue(const string& name);
+=======
+int pieceValue(const string& name);
+
+#endif 
+>>>>>>> 11ed285900d2ae6925459c826014a259e6eb0b8a
