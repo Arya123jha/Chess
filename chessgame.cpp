@@ -175,7 +175,6 @@ void ChessGame::startNewGame(bool vsAI) {
     historyStates.clear();
     capturedByWhite.clear();
     capturedByBlack.clear();
-    enPassantTarget = { -1, -1 };
     draggedIndex = -1;
     dragging = false;
 
@@ -225,7 +224,6 @@ void ChessGame::undo() {
     gameOver = false;
     state = playWithAI ? GameState::PLAYING_AI : GameState::PLAYING_FRIEND;
     whiteTurn = !whiteTurn; // undo flips turn back
-    enPassantTarget = { -1, -1 }; // conservative reset
 }
 
 void ChessGame::saveToFile(const std::string& fname) {
@@ -269,24 +267,6 @@ bool ChessGame::tryMove(int pieceIndex, int toR, int toC) {
     if (moving->isSquareOccupiedBySameColor(toR, toC, pieces)) return false;
     if (wouldMoveLeaveKingInCheck(pieceIndex, toR, toC, pieces, textures)) return false;
 
-    // Handle en passant
-    if (moving->getName().find("pawn") != std::string::npos &&
-        std::abs(toC - moving->getCol()) == 1 &&
-        toR == enPassantTarget.first && toC == enPassantTarget.second) {
-        int victimRow = moving->getRow();
-        int victimCol = toC;
-        for (int i = 0; i < static_cast<int>(pieces.size()); ++i) {
-            if (pieces[i]->getRow() == victimRow &&
-                pieces[i]->getCol() == victimCol &&
-                pieces[i]->getName().find("pawn") != std::string::npos) {
-                recordCapture(moving->isWhite(), pieces[i]->getName());
-                pieces.erase(pieces.begin() + i);
-                if (i < pieceIndex) --pieceIndex;
-                break;
-            }
-        }
-    }
-
     // Normal captures
     for (int i = 0; i < static_cast<int>(pieces.size()); ++i) {
         if (i != pieceIndex && pieces[i]->getRow() == toR && pieces[i]->getCol() == toC) {
@@ -295,15 +275,6 @@ bool ChessGame::tryMove(int pieceIndex, int toR, int toC) {
             if (i < pieceIndex) --pieceIndex;
             break;
         }
-    }
-
-    // Update en passant target
-    if (moving->getName().find("pawn") != std::string::npos &&
-        std::abs(toR - moving->getRow()) == 2) {
-        enPassantTarget = { (toR + moving->getRow()) / 2, toC };
-    }
-    else {
-        enPassantTarget = { -1, -1 };
     }
 
     // Move the piece

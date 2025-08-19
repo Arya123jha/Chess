@@ -44,9 +44,6 @@ private:
     int draggedIndex = -1;
     sf::Vector2f dragOffset;
 
-    // En-passant
-    std::pair<int, int> enPassantTarget = { -1,-1 };
-
     // Undo stack
     std::vector<std::vector<std::unique_ptr<Piece>>> historyStates;
 
