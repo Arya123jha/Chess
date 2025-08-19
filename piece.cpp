@@ -1,6 +1,5 @@
 #include "Piece.h"
 #include "Constants.h"
-#include <stdexcept>
 #include <algorithm>
 
 Piece::Piece(const string& name_, int r, int c, const sf::Texture& t) : name(name_), row(r), col(c) {
