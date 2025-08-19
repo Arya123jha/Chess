@@ -72,10 +72,11 @@ LINKS:
 https://www.sfml-dev.org/download/sfml/2.6.2/
 https://www.sfml-dev.org/tutorials/3.0/getting-started/visual-studio/
 
-
 ...........................................................................................
 The project contains some files that needs to be included in the project.
 They are:
 Assets and arial-font that contains the images and text needed for formatting the project(should in the same location as the project)
 All the project files and folders are kept in the following git profile.
+(End of setup instructions)
+
 https://github.com/Arya123jha/Chess
