@@ -115,8 +115,8 @@ unique_ptr<Piece> createPieceFromName(const string& name, int r, int c, const ma
 vector<unique_ptr<Piece>> clonePieces(const vector<unique_ptr<Piece>>& pieces, const map<string, sf::Texture>& textures) {
     vector<unique_ptr<Piece>> copy;
     copy.reserve(pieces.size());
-    for (const auto& p : pieces) {
-        auto np = createPieceFromName(p->getName(), p->getRow(), p->getCol(), textures);
+    for (const unique_ptr<Piece>& p : pieces) {
+        unique_ptr<Piece> np = createPieceFromName(p->getName(), p->getRow(), p->getCol(), textures);
         np->getHasMoved() = p->getHasMoved();
         copy.push_back(move(np));
     }
@@ -124,7 +124,7 @@ vector<unique_ptr<Piece>> clonePieces(const vector<unique_ptr<Piece>>& pieces, c
 }
 
 bool isSquareAttacked(int r, int c, bool byWhite, const vector<unique_ptr<Piece>>& pieces) {
-    for (const auto& p : pieces) {
+    for (const unique_ptr<Piece>& p : pieces) {
         if (p->isWhite() != byWhite) continue;
         string nm = p->getName();
         int pr = p->getRow(), pc = p->getCol();
@@ -191,7 +191,7 @@ bool isSquareAttacked(int r, int c, bool byWhite, const vector<unique_ptr<Piece>
 }
 
 pair<int, int> findKingPos(bool white, const vector<unique_ptr<Piece>>& pieces) {
-    for (const auto& p : pieces) if (p->isWhite() == white && p->getName().find("king") != string::npos) return { p->getRow(), p->getCol() };
+    for (const unique_ptr<Piece>& p : pieces) if (p->isWhite() == white && p->getName().find("king") != string::npos) return { p->getRow(), p->getCol() };
     return { -1,-1 };
 }
 
