@@ -15,8 +15,10 @@ void Piece::setPosition(int r, int c) {
 }
 
 bool Piece::isSquareOccupiedBySameColor(int r, int c, const vector<unique_ptr<Piece>>& pieces) const {
-    for (const auto& p : pieces) if (p->getRow() == r && p->getCol() == c && p->isWhite() == isWhite()) return true;
-    return false;
+    for (const unique_ptr<Piece>& p : pieces)
+        if (p->getRow() == r && p->getCol() == c && p->isWhite() == isWhite()) 
+            return true;
+        return false;
 }
 
 bool Piece::isPathClear(int newRow, int newCol, const vector<unique_ptr<Piece>>& pieces) const {
@@ -24,7 +26,7 @@ bool Piece::isPathClear(int newRow, int newCol, const vector<unique_ptr<Piece>>&
     int colStep = (newCol > col) ? 1 : (newCol < col) ? -1 : 0;
     int r = row + rowStep, c = col + colStep;
     while (r != newRow || c != newCol) {
-        for (const auto& p : pieces) if (p->getRow() == r && p->getCol() == c) return false;
+        for (const unique_ptr<Piece>& p : pieces) if (p->getRow() == r && p->getCol() == c) return false;
         r += rowStep; c += colStep;
     }
     return true;
@@ -36,18 +38,20 @@ bool Pawn::isValidMove(int newRow, int newCol, const vector<unique_ptr<Piece>>& 
     int dir = isWhite() ? -1 : 1;
     if (col == newCol) {
         if (newRow == row + dir) {
-            for (const auto& p : pieces) if (p->getRow() == newRow && p->getCol() == newCol) return false;
+            for (const unique_ptr<Piece>& p : pieces) 
+                if (p->getRow() == newRow && p->getCol() == newCol) 
+                    return false;
             return true;
         }
         if (newRow == row + 2 * dir && !hasMoved) {
-            for (const auto& p : pieces) {
+            for (const unique_ptr<Piece>& p : pieces) {
                 if (p->getCol() == col && (p->getRow() == row + dir || p->getRow() == row + 2 * dir)) return false;
             }
             return true;
         }
     }
     else if (abs(newCol - col) == 1 && newRow == row + dir) {
-        for (const auto& p : pieces) if (p->getRow() == newRow && p->getCol() == newCol && p->isWhite() != isWhite()) return true;
+        for (const unique_ptr<Piece>& p : pieces) if (p->getRow() == newRow && p->getCol() == newCol && p->isWhite() != isWhite()) return true;
     }
     return false;
 }
