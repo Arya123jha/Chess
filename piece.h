@@ -8,7 +8,6 @@
 using namespace std;
 using namespace Chess;
 
-
 class Piece {
 protected:
     sf::Sprite sprite;

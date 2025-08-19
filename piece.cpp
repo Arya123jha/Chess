@@ -141,7 +141,7 @@ bool isSquareAttacked(int r, int c, bool byWhite, const vector<unique_ptr<Piece>
                 int rs = (r > pr) ? 1 : -1, cs = (c > pc) ? 1 : -1;
                 int rr = pr + rs, cc = pc + cs; bool blocked = false;
                 while (rr != r && cc != c) {
-                    for (const auto& o : pieces) if (o->getRow() == rr && o->getCol() == cc) { blocked = true; break; }
+                    for (const unique_ptr<Piece>& o : pieces) if (o->getRow() == rr && o->getCol() == cc) { blocked = true; break; }
                     if (blocked) break;
                     rr += rs; cc += cs;
                 }
@@ -153,7 +153,7 @@ bool isSquareAttacked(int r, int c, bool byWhite, const vector<unique_ptr<Piece>
                 int rs = (r == pr) ? 0 : ((r > pr) ? 1 : -1), cs = (c == pc) ? 0 : ((c > pc) ? 1 : -1);
                 int rr = pr + rs, cc = pc + cs; bool blocked = false;
                 while (rr != r || cc != c) {
-                    for (const auto& o : pieces) if (o->getRow() == rr && o->getCol() == cc) { blocked = true; break; }
+                    for (const unique_ptr<Piece>& o : pieces) if (o->getRow() == rr && o->getCol() == cc) { blocked = true; break; }
                     if (blocked) break;
                     rr += rs; cc += cs;
                 }
@@ -165,7 +165,7 @@ bool isSquareAttacked(int r, int c, bool byWhite, const vector<unique_ptr<Piece>
                 int rs = (r == pr) ? 0 : ((r > pr) ? 1 : -1), cs = (c == pc) ? 0 : ((c > pc) ? 1 : -1);
                 int rr = pr + rs, cc = pc + cs; bool blocked = false;
                 while (rr != r || cc != c) {
-                    for (const auto& o : pieces) if (o->getRow() == rr && o->getCol() == cc) { blocked = true; break; }
+                    for (const unique_ptr<Piece>& o : pieces) if (o->getRow() == rr && o->getCol() == cc) { blocked = true; break; }
                     if (blocked) break;
                     rr += rs; cc += cs;
                 }
@@ -175,7 +175,7 @@ bool isSquareAttacked(int r, int c, bool byWhite, const vector<unique_ptr<Piece>
                 int rs = (r > pr) ? 1 : -1, cs = (c > pc) ? 1 : -1;
                 int rr = pr + rs, cc = pc + cs; bool blocked = false;
                 while (rr != r && cc != c) {
-                    for (const auto& o : pieces) if (o->getRow() == rr && o->getCol() == cc) { blocked = true; break; }
+                    for (const unique_ptr<Piece>& o : pieces) if (o->getRow() == rr && o->getCol() == cc) { blocked = true; break; }
                     if (blocked) break;
                     rr += rs; cc += cs;
                 }
@@ -191,7 +191,9 @@ bool isSquareAttacked(int r, int c, bool byWhite, const vector<unique_ptr<Piece>
 }
 
 pair<int, int> findKingPos(bool white, const vector<unique_ptr<Piece>>& pieces) {
-    for (const unique_ptr<Piece>& p : pieces) if (p->isWhite() == white && p->getName().find("king") != string::npos) return { p->getRow(), p->getCol() };
+    for (const unique_ptr<Piece>& p : pieces) 
+        if (p->isWhite() == white && p->getName().find("king") != string::npos) 
+            return { p->getRow(), p->getCol() };
     return { -1,-1 };
 }
 
@@ -208,11 +210,16 @@ bool wouldMoveLeaveKingInCheck(int pieceIndex, int toRow, int toCol, const vecto
     bool movingColor = pieces[pieceIndex]->isWhite();
     int idx = -1;
     for (int i = 0; i < (int)copy.size(); ++i) {
-        if (copy[i]->getRow() == pieces[pieceIndex]->getRow() && copy[i]->getCol() == pieces[pieceIndex]->getCol() && copy[i]->getName() == movingName) { idx = i; break; }
+        if (copy[i]->getRow() == pieces[pieceIndex]->getRow() && copy[i]->getCol() == pieces[pieceIndex]->getCol() && copy[i]->getName() == movingName)
+            { idx = i; break; }
     }
     if (idx == -1) return true;
     for (int i = 0; i < (int)copy.size(); ++i) {
-        if (i != idx && copy[i]->getRow() == toRow && copy[i]->getCol() == toCol) { copy.erase(copy.begin() + i); if (i < idx) --idx; break; }
+        if (i != idx && copy[i]->getRow() == toRow && copy[i]->getCol() == toCol &&copy[i]->isWhite() != movingColor)
+        { copy.erase(copy.begin() + i); 
+          if (i < idx) --idx;
+          break;
+        }
     }
     copy[idx]->setPosition(toRow, toCol);
     return isKingInCheck(movingColor, copy);
@@ -221,10 +228,11 @@ bool wouldMoveLeaveKingInCheck(int pieceIndex, int toRow, int toCol, const vecto
 bool hasLegalMove(bool white, const vector<unique_ptr<Piece>>& pieces, const map<string, sf::Texture>& textures) {
     for (int i = 0; i < (int)pieces.size(); ++i) {
         if (pieces[i]->isWhite() != white) continue;
-        for (int r = 0; r < BOARD_SIZE; ++r) for (int c = 0; c < BOARD_SIZE; ++c) {
-            if (!pieces[i]->isValidMove(r, c, pieces)) continue;
-            if (pieces[i]->isSquareOccupiedBySameColor(r, c, pieces)) continue;
-            if (!wouldMoveLeaveKingInCheck(i, r, c, pieces, textures)) return true;
+        for (int r = 0; r < BOARD_SIZE; ++r) 
+            for (int c = 0; c < BOARD_SIZE; ++c) {
+                if (!pieces[i]->isValidMove(r, c, pieces)) continue;
+                if (pieces[i]->isSquareOccupiedBySameColor(r, c, pieces)) continue;
+                if (!wouldMoveLeaveKingInCheck(i, r, c, pieces, textures)) return true;
         }
     }
     return false;
