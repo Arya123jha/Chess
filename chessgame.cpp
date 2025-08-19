@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 #include "ChessGame.h"
 #include <algorithm>
 #include <ctime>
@@ -65,40 +64,11 @@ ChessGame::ChessGame() :
     if (!font.loadFromFile("arial-font/arial.ttf")) {
         throw std::runtime_error("Failed to load font arial.ttf");
     }
-=======
-#include "chessgame.h"
-#include <fstream>
-#include <sstream>
-#include <stdexcept>
-#include <ctime>
-#include <iostream>
-
-Button::Button(const string& label, sf::Font& font, sf::Vector2f pos, sf::Vector2f size, unsigned int chsize) {
-    shape.setSize(size); shape.setPosition(pos);
-    shape.setFillColor(sf::Color(80, 80, 80));
-    shape.setOutlineColor(sf::Color(220, 220, 220)); shape.setOutlineThickness(3.f);
-    text.setFont(font); text.setString(label); text.setCharacterSize(chsize); text.setFillColor(sf::Color::White);
-    sf::FloatRect b = text.getLocalBounds();
-    text.setPosition(pos.x + (size.x - b.width) / 2.f - b.left, pos.y + (size.y - b.height) / 2.f - b.top - 4);
-}
-
-void Button::draw(sf::RenderWindow& w) const { w.draw(shape); w.draw(text); }
-bool Button::isClicked(sf::Vector2f mousePos) const { return shape.getGlobalBounds().contains(mousePos); }
-void Button::updateHover(sf::Vector2f mousePos) {
-    if (shape.getGlobalBounds().contains(mousePos)) shape.setFillColor(sf::Color(110, 110, 110));
-    else shape.setFillColor(sf::Color(80, 80, 80));
-}
-
-ChessGame::ChessGame() : window(sf::VideoMode(TILE_SIZE* BOARD_SIZE + SIDEBAR_WIDTH, TILE_SIZE* BOARD_SIZE), "SFML Chess") {
-    rng.seed((unsigned)time(nullptr));
-    if (!font.loadFromFile("arial-font/arial.ttf")) throw runtime_error("Failed to load font arial.ttf - place in exe folder or change path.");
->>>>>>> 11ed285900d2ae6925459c826014a259e6eb0b8a
     loadTextures();
     setupBoardUI();
     setupMenuUI();
 }
 
-<<<<<<< HEAD
 void ChessGame::run() {
     while (window.isOpen()) {
         processEvents();
@@ -148,24 +118,10 @@ void ChessGame::loadTextures() {
             texture.create(1, 1); // placeholder
         }
         textures[name] = texture;
-=======
-void ChessGame::loadTextures() {
-    vector<string> names = { "w_pawn","w_rook","w_knight","w_bishop","w_queen","w_king",
-                             "b_pawn","b_rook","b_knight","b_bishop","b_queen","b_king" };
-    for (auto& n : names) {
-        sf::Texture t;
-        string path = "Assets/" + n + ".png";
-        if (!t.loadFromFile(path)) {
-            cerr << "Warning: failed to load " << path << " — creating placeholder\n";
-            t.create(1, 1); // placeholder
-        }
-        textures[n] = t;
->>>>>>> 11ed285900d2ae6925459c826014a259e6eb0b8a
     }
 }
 
 void ChessGame::setupBoardUI() {
-<<<<<<< HEAD
     for (int r = 0; r < Chess::BOARD_SIZE; ++r) {
         for (int c = 0; c < Chess::BOARD_SIZE; ++c) {
             squares[r][c].setSize(sf::Vector2f(Chess::TILE_SIZE, Chess::TILE_SIZE));
@@ -244,69 +200,11 @@ void ChessGame::startNewGame(bool vsAI) {
     addPiece("w_knight", 7, 6, textures, pieces);
     addPiece("w_rook", 7, 7, textures, pieces);
     for (int c = 0; c < 8; ++c) addPiece("w_pawn", 6, c, textures, pieces);
-=======
-    for (int r = 0; r < BOARD_SIZE; ++r) for (int c = 0; c < BOARD_SIZE; ++c) {
-        squares[r][c].setSize({ (float)TILE_SIZE,(float)TILE_SIZE });
-        squares[r][c].setPosition(c * TILE_SIZE, r * TILE_SIZE);
-        bool light = (r + c) % 2 == 0;
-        squares[r][c].setFillColor(light ? baseLightColor : baseDarkColor);
-    }
-
-    titleText.setFont(font); titleText.setCharacterSize(64); titleText.setFillColor(sf::Color::Black);
-    titleText.setString("SFML Chess");
-
-    subText.setFont(font); subText.setCharacterSize(26); subText.setFillColor(sf::Color(20, 20, 20));
-    subText.setString("Choose mode");
-
-    footerText.setFont(font); footerText.setCharacterSize(14); footerText.setFillColor(sf::Color(30, 30, 30));
-    footerText.setString("Drag pieces | U:Undo  S:Save  L:Load  R:Restart  Esc:Menu");
-}
-
-void ChessGame::setupMenuUI() {
-    float btnW = 360.f, btnH = 72.f;
-    float centerX = window.getSize().x / 2.f;
-    float centerY = window.getSize().y / 2.f;
-
-    playFriendBtn = Button("Play with Friend", font,
-        { centerX - btnW / 2.f, centerY - btnH - 10.f },
-        { btnW, btnH }, 28);
-    playAIBtn = Button("Play with AI", font,
-        { centerX - btnW / 2.f, centerY + 10.f },
-        { btnW, btnH }, 28);
-    exitBtn = Button("Exit", font,
-        { centerX - btnW / 2.f, centerY + btnH + 30.f },
-        { btnW, btnH }, 28);
-
-    float sx = TILE_SIZE * BOARD_SIZE;
-    backToMenuBtn = Button("Back to Menu", font,
-        { sx + 12.f, (float)window.getSize().y - 80.f },
-        { SIDEBAR_WIDTH - 24.f, 60.f }, 22);
-}
-
-void ChessGame::addPiece(const string& name, int r, int c) {
-    pieces.push_back(createPieceFromName(name, r, c, textures));
-}
-
-void ChessGame::startNewGame(bool vsAI) {
-    pieces.clear(); playWithAI = vsAI; whiteTurn = true; gameOver = false; aiThinking = false;
-    enPassantTarget = { -1,-1 }; endGameMessage.clear(); historyStates.clear();
-    capturedByWhite.clear(); capturedByBlack.clear();
-
-    // Black pieces
-    addPiece("b_rook", 0, 0); addPiece("b_knight", 0, 1); addPiece("b_bishop", 0, 2); addPiece("b_queen", 0, 3);
-    addPiece("b_king", 0, 4); addPiece("b_bishop", 0, 5); addPiece("b_knight", 0, 6); addPiece("b_rook", 0, 7);
-    for (int c = 0; c < 8; ++c) addPiece("b_pawn", 1, c);
-    // White pieces
-    addPiece("w_rook", 7, 0); addPiece("w_knight", 7, 1); addPiece("w_bishop", 7, 2); addPiece("w_queen", 7, 3);
-    addPiece("w_king", 7, 4); addPiece("w_bishop", 7, 5); addPiece("w_knight", 7, 6); addPiece("w_rook", 7, 7);
-    for (int c = 0; c < 8; ++c) addPiece("w_pawn", 6, c);
->>>>>>> 11ed285900d2ae6925459c826014a259e6eb0b8a
 
     saveState();
     state = vsAI ? GameState::PLAYING_AI : GameState::PLAYING_FRIEND;
 }
 
-<<<<<<< HEAD
 void ChessGame::saveState() {
     std::vector<std::unique_ptr<Piece>> snapshot;
     snapshot.reserve(pieces.size());
@@ -366,68 +264,11 @@ void ChessGame::loadFromFile(const std::string& fname) {
 bool ChessGame::tryMove(int pieceIndex, int toR, int toC) {
     if (pieceIndex < 0 || pieceIndex >= static_cast<int>(pieces.size())) return false;
 
-=======
-void ChessGame::saveState() { historyStates.push_back(clonePieces(pieces, textures)); }
-
-void ChessGame::undo() {
-    if (historyStates.size() < 2) return;
-    historyStates.pop_back();
-    pieces = clonePieces(historyStates.back(), textures);
-    whiteTurn = !whiteTurn;
-    gameOver = false; aiThinking = false; enPassantTarget = { -1,-1 }; endGameMessage.clear();
-}
-
-void ChessGame::saveToFile(const string& fname) {
-    ofstream ofs(fname);
-    if (!ofs) { cerr << "Save failed\n"; return; }
-    ofs << (whiteTurn ? 1 : 0) << "\n";
-    ofs << pieces.size() << "\n";
-    for (auto& p : pieces) ofs << p->getName() << " " << p->getRow() << " " << p->getCol() << " " << p->getHasMoved() << "\n";
-
-    ofs << "CAPW " << capturedByWhite.size() << "\n";
-    for (auto& s : capturedByWhite) ofs << s << "\n";
-    ofs << "CAPB " << capturedByBlack.size() << "\n";
-    for (auto& s : capturedByBlack) ofs << s << "\n";
-
-    cerr << "Saved " << fname << "\n";
-}
-
-void ChessGame::loadFromFile(const string& fname) {
-    ifstream ifs(fname);
-    if (!ifs) { cerr << "Load failed\n"; return; }
-    pieces.clear(); int wt; ifs >> wt; whiteTurn = wt == 1;
-    int n; ifs >> n;
-    for (int i = 0; i < n; ++i) { string nm; int r, c; bool hm; ifs >> nm >> r >> c >> hm; pieces.push_back(createPieceFromName(nm, r, c, textures)); pieces.back()->hasMoved = hm; }
-
-    capturedByWhite.clear(); capturedByBlack.clear();
-    string tag;
-    if (ifs >> tag) {
-        if (tag == "CAPW") {
-            size_t m; ifs >> m;
-            string line; getline(ifs, line);
-            for (size_t i = 0; i < m; ++i) { string s; getline(ifs, s); if (!s.empty()) capturedByWhite.push_back(s); }
-            ifs >> tag;
-        }
-        if (tag == "CAPB") {
-            size_t m; ifs >> m;
-            string line; getline(ifs, line);
-            for (size_t i = 0; i < m; ++i) { string s; getline(ifs, s); if (!s.empty()) capturedByBlack.push_back(s); }
-        }
-    }
-
-    historyStates.clear(); saveState();
-    state = playWithAI ? GameState::PLAYING_AI : GameState::PLAYING_FRIEND; endGameMessage.clear();
-}
-
-bool ChessGame::tryMove(int pieceIndex, int toR, int toC) {
-    if (pieceIndex < 0 || pieceIndex >= (int)pieces.size()) return false;
->>>>>>> 11ed285900d2ae6925459c826014a259e6eb0b8a
     Piece* moving = pieces[pieceIndex].get();
     if (!moving->isValidMove(toR, toC, pieces)) return false;
     if (moving->isSquareOccupiedBySameColor(toR, toC, pieces)) return false;
     if (wouldMoveLeaveKingInCheck(pieceIndex, toR, toC, pieces, textures)) return false;
 
-<<<<<<< HEAD
     // Handle en passant
     if (moving->getName().find("pawn") != std::string::npos &&
         std::abs(toC - moving->getCol()) == 1 &&
@@ -442,30 +283,12 @@ bool ChessGame::tryMove(int pieceIndex, int toR, int toC) {
                 pieces.erase(pieces.begin() + i);
                 if (i < pieceIndex) --pieceIndex;
                 break;
-=======
-    if (moving->getName().find("pawn") != string::npos && abs(toC - moving->getCol()) == 1 &&
-        none_of(pieces.begin(), pieces.end(), [&](const unique_ptr<Piece>& p) { return p->getRow() == toR && p->getCol() == toC; })) {
-        if (enPassantTarget.first == toR && enPassantTarget.second == toC) {
-            int victimRow = moving->getRow(), victimCol = toC;
-            for (int i = 0; i < (int)pieces.size(); ++i) {
-                if (pieces[i]->getRow() == victimRow && pieces[i]->getCol() == victimCol &&
-                    pieces[i]->getName().find("pawn") != string::npos && pieces[i]->isWhite() != moving->isWhite()) {
-                    recordCapture(moving->isWhite(), pieces[i]->getName());
-                    pieces.erase(pieces.begin() + i);
-                    if (i < pieceIndex) --pieceIndex;
-                    break;
-                }
->>>>>>> 11ed285900d2ae6925459c826014a259e6eb0b8a
             }
         }
     }
 
-<<<<<<< HEAD
     // Normal captures
     for (int i = 0; i < static_cast<int>(pieces.size()); ++i) {
-=======
-    for (int i = 0; i < (int)pieces.size(); ++i) {
->>>>>>> 11ed285900d2ae6925459c826014a259e6eb0b8a
         if (i != pieceIndex && pieces[i]->getRow() == toR && pieces[i]->getCol() == toC) {
             recordCapture(moving->isWhite(), pieces[i]->getName());
             pieces.erase(pieces.begin() + i);
@@ -474,7 +297,6 @@ bool ChessGame::tryMove(int pieceIndex, int toR, int toC) {
         }
     }
 
-<<<<<<< HEAD
     // Update en passant target
     if (moving->getName().find("pawn") != std::string::npos &&
         std::abs(toR - moving->getRow()) == 2) {
@@ -493,20 +315,6 @@ bool ChessGame::tryMove(int pieceIndex, int toR, int toC) {
             (!pieces[pieceIndex]->isWhite() && toR == 7)) {
             std::string newName = pieces[pieceIndex]->isWhite() ? "w_queen" : "b_queen";
             pieces[pieceIndex] = createPieceFromName(newName, toR, toC, textures);
-=======
-    if (moving->getName().find("pawn") != string::npos && abs(toR - moving->getRow()) == 2) {
-        int passedRow = (toR + moving->getRow()) / 2;
-        enPassantTarget = { passedRow, toC };
-    }
-    else enPassantTarget = { -1,-1 };
-
-    pieces[pieceIndex]->setPosition(toR, toC);
-    if (pieces[pieceIndex]->getName().find("pawn") != string::npos) {
-        if ((pieces[pieceIndex]->isWhite() && pieces[pieceIndex]->getRow() == 0) || (!pieces[pieceIndex]->isWhite() && pieces[pieceIndex]->getRow() == 7)) {
-            string newName = pieces[pieceIndex]->isWhite() ? "w_queen" : "b_queen";
-            pieces[pieceIndex] = createPieceFromName(newName, toR, toC, textures);
-            pieces[pieceIndex]->hasMoved = true;
->>>>>>> 11ed285900d2ae6925459c826014a259e6eb0b8a
         }
     }
 
@@ -514,7 +322,6 @@ bool ChessGame::tryMove(int pieceIndex, int toR, int toC) {
     return true;
 }
 
-<<<<<<< HEAD
 // -------------------- AI --------------------
 
 std::vector<std::tuple<int, int, bool>> ChessGame::computeLegalMovesForPiece(int index) {
@@ -627,267 +434,10 @@ void ChessGame::render() {
         break;
     }
 
-=======
-bool ChessGame::makeAIMove(bool aiWhite) {
-    vector<Candidate> all;
-    for (int i = 0; i < (int)pieces.size(); ++i) {
-        if (pieces[i]->isWhite() != aiWhite) continue;
-        for (int r = 0; r < BOARD_SIZE; ++r) for (int c = 0; c < BOARD_SIZE; ++c) {
-            if (!pieces[i]->isValidMove(r, c, pieces)) continue;
-            if (pieces[i]->isSquareOccupiedBySameColor(r, c, pieces)) continue;
-            if (wouldMoveLeaveKingInCheck(i, r, c, pieces, textures)) continue;
-            bool isCap = false; int capVal = 0;
-            for (const auto& p : pieces) if (p->getRow() == r && p->getCol() == c && p->isWhite() != aiWhite) { isCap = true; capVal = pieceValue(p->getName()); break; }
-            auto copy = clonePieces(pieces, textures);
-            int idx = -1;
-            for (int k = 0; k < (int)copy.size(); ++k) if (copy[k]->getRow() == pieces[i]->getRow() && copy[k]->getCol() == pieces[i]->getCol() && copy[k]->getName() == pieces[i]->getName()) { idx = k; break; }
-            if (idx == -1) continue;
-            for (int k = 0; k < (int)copy.size(); ++k) if (k != idx && copy[k]->getRow() == r && copy[k]->getCol() == c) { copy.erase(copy.begin() + k); if (k < idx) --idx; break; }
-            copy[idx]->setPosition(r, c);
-            bool givesCheck = isKingInCheck(!aiWhite, copy);
-            all.push_back({ i,r,c,isCap,capVal,givesCheck });
-        }
-    }
-    if (all.empty()) return false;
-    vector<Candidate> checks;
-    for (auto& c : all) if (c.givesCheck) checks.push_back(c);
-    if (!checks.empty()) {
-        uniform_int_distribution<int> d(0, (int)checks.size() - 1);
-        Candidate sel = checks[d(rng)];
-        return tryAndApplyAIMove(sel);
-    }
-    int bestVal = 0;
-    for (auto& c : all) if (c.isCapture) bestVal = max(bestVal, c.captureValue);
-    if (bestVal > 0) {
-        vector<Candidate> bestCaps;
-        for (auto& c : all) if (c.isCapture && c.captureValue == bestVal) bestCaps.push_back(c);
-        uniform_int_distribution<int> d(0, (int)bestCaps.size() - 1);
-        Candidate sel = bestCaps[d(rng)];
-        return tryAndApplyAIMove(sel);
-    }
-    uniform_int_distribution<int> d(0, (int)all.size() - 1);
-    Candidate sel = all[d(rng)];
-    return tryAndApplyAIMove(sel);
-}
-
-bool ChessGame::tryAndApplyAIMove(const Candidate& cand) {
-    int idx = -1;
-    if (cand.pieceIndex >= 0 && cand.pieceIndex < (int)pieces.size()) idx = cand.pieceIndex;
-    if (idx == -1) {
-        for (int i = 0; i < (int)pieces.size(); ++i) if (pieces[i]->getName() == pieces[cand.pieceIndex]->getName()) { idx = i; break; }
-    }
-    if (idx == -1) return false;
-    return tryMove(idx, cand.tr, cand.tc);
-}
-
-vector<tuple<int, int, bool>> ChessGame::computeLegalMovesForPiece(int index) {
-    vector<tuple<int, int, bool>> out;
-    if (index < 0 || index >= (int)pieces.size()) return out;
-    for (int r = 0; r < BOARD_SIZE; ++r) for (int c = 0; c < BOARD_SIZE; ++c) {
-        if (!pieces[index]->isValidMove(r, c, pieces)) continue;
-        if (pieces[index]->isSquareOccupiedBySameColor(r, c, pieces)) continue;
-        if (wouldMoveLeaveKingInCheck(index, r, c, pieces, textures)) continue;
-        bool isCap = false;
-        for (const auto& p : pieces) if (p->getRow() == r && p->getCol() == c && p->isWhite() != pieces[index]->isWhite()) { isCap = true; break; }
-        out.emplace_back(r, c, isCap);
-    }
-    return out;
-}
-
-void ChessGame::updateCheckHighlights() {
-    for (int r = 0; r < BOARD_SIZE; ++r) {
-        for (int c = 0; c < BOARD_SIZE; ++c) {
-            bool light = (r + c) % 2 == 0;
-            squares[r][c].setFillColor(light ? baseLightColor : baseDarkColor);
-        }
-    }
-    auto wk = findKingPos(true, pieces);
-    if (wk.first != -1) {
-        if (isSquareAttacked(wk.first, wk.second, false, pieces)) {
-            squares[wk.first][wk.second].setFillColor(sf::Color(220, 20, 60));
-        }
-    }
-    auto bk = findKingPos(false, pieces);
-    if (bk.first != -1) {
-        if (isSquareAttacked(bk.first, bk.second, true, pieces)) {
-            squares[bk.first][bk.second].setFillColor(sf::Color(220, 20, 60));
-        }
-    }
-}
-
-void ChessGame::drawKingCheckOutlines() {
-    auto wk = findKingPos(true, pieces);
-    if (wk.first != -1 && isSquareAttacked(wk.first, wk.second, false, pieces)) {
-        sf::RectangleShape rect(sf::Vector2f((float)TILE_SIZE - 8.f, (float)TILE_SIZE - 8.f));
-        rect.setPosition((float)wk.second * TILE_SIZE + 4.f, (float)wk.first * TILE_SIZE + 4.f);
-        rect.setFillColor(sf::Color(0, 0, 0, 0));
-        rect.setOutlineColor(sf::Color(220, 20, 60));
-        rect.setOutlineThickness(4.f);
-        window.draw(rect);
-    }
-    auto bk = findKingPos(false, pieces);
-    if (bk.first != -1 && isSquareAttacked(bk.first, bk.second, true, pieces)) {
-        sf::RectangleShape rect(sf::Vector2f((float)TILE_SIZE - 8.f, (float)TILE_SIZE - 8.f));
-        rect.setPosition((float)bk.second * TILE_SIZE + 4.f, (float)bk.first * TILE_SIZE + 4.f);
-        rect.setFillColor(sf::Color(0, 0, 0, 0));
-        rect.setOutlineColor(sf::Color(220, 20, 60));
-        rect.setOutlineThickness(4.f);
-        window.draw(rect);
-    }
-}
-
-void ChessGame::run() {
-    while (window.isOpen()) {
-        processEvents();
-
-        if (state == GameState::PLAYING_AI && !gameOver) {
-            if (!whiteTurn) {
-                if (!aiThinking) {
-                    aiThinking = true; aiClock.restart();
-                }
-                else {
-                    if (aiClock.getElapsedTime().asSeconds() >= AI_THINK_SECONDS) {
-                        bool moved = makeAIMove(false);
-                        aiThinking = false;
-                        if (moved) {
-                            whiteTurn = !whiteTurn;
-                            if (isKingInCheck(whiteTurn, pieces)) {}
-                            if (!hasLegalMove(whiteTurn, pieces, textures)) {
-                                if (isKingInCheck(whiteTurn, pieces)) endGameMessage = string((whiteTurn ? "White" : "Black")) + " - Checkmate";
-                                else endGameMessage = "Draw - Stalemate";
-                                gameOver = true; state = GameState::GAME_OVER;
-                            }
-                        }
-                        else {
-                            if (isKingInCheck(false, pieces)) endGameMessage = "White - Checkmate";
-                            else endGameMessage = "Draw - Stalemate";
-                            gameOver = true; state = GameState::GAME_OVER;
-                        }
-                    }
-                }
-            }
-            else {
-                aiThinking = false;
-            }
-        }
-
-        render();
-    }
-}
-
-void ChessGame::processEvents() {
-    sf::Event e;
-    while (window.pollEvent(e)) {
-        if (e.type == sf::Event::Closed) window.close();
-        if (state == GameState::MAIN_MENU) handleMenuEvent(e);
-        else if (state == GameState::PLAYING_FRIEND || state == GameState::PLAYING_AI) handleGameEvent(e);
-        else if (state == GameState::GAME_OVER) handleGameOverEvent(e);
-    }
-}
-
-void ChessGame::handleMenuEvent(const sf::Event& e) {
-    if (e.type == sf::Event::MouseMoved) {
-        playFriendBtn.updateHover((sf::Vector2f)sf::Mouse::getPosition(window));
-        playAIBtn.updateHover((sf::Vector2f)sf::Mouse::getPosition(window));
-        exitBtn.updateHover((sf::Vector2f)sf::Mouse::getPosition(window));
-    }
-    if (e.type == sf::Event::MouseButtonPressed && e.mouseButton.button == sf::Mouse::Left) {
-        sf::Vector2f mp = window.mapPixelToCoords({ e.mouseButton.x,e.mouseButton.y });
-        if (playFriendBtn.isClicked(mp)) startNewGame(false);
-        else if (playAIBtn.isClicked(mp)) startNewGame(true);
-        else if (exitBtn.isClicked(mp)) window.close();
-    }
-}
-
-void ChessGame::handleGameOverEvent(const sf::Event& e) {
-    if (e.type == sf::Event::MouseButtonPressed && e.mouseButton.button == sf::Mouse::Left) {
-        sf::Vector2f mp = window.mapPixelToCoords({ e.mouseButton.x,e.mouseButton.y });
-        if (backToMenuBtn.isClicked(mp)) {
-            state = GameState::MAIN_MENU;
-            endGameMessage.clear();
-        }
-    }
-    if (e.type == sf::Event::KeyPressed) {
-        if (e.key.code == sf::Keyboard::R) state = GameState::MAIN_MENU;
-        if (e.key.code == sf::Keyboard::U) undo();
-    }
-}
-
-void ChessGame::handleGameEvent(const sf::Event& e) {
-    if (e.type == sf::Event::MouseButtonPressed && e.mouseButton.button == sf::Mouse::Left) {
-        sf::Vector2f mp = window.mapPixelToCoords({ e.mouseButton.x,e.mouseButton.y });
-        float sx = TILE_SIZE * BOARD_SIZE;
-        if (mp.x >= sx) {
-            if (backToMenuBtn.isClicked(mp)) { state = GameState::MAIN_MENU; return; }
-        }
-        int c = static_cast<int>(mp.x) / TILE_SIZE;
-        int r = static_cast<int>(mp.y) / TILE_SIZE;
-        if (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE) {
-            for (int i = (int)pieces.size() - 1; i >= 0; --i) {
-                if (pieces[i]->getRow() == r && pieces[i]->getCol() == c) {
-                    if (pieces[i]->isWhite() == whiteTurn) {
-                        dragging = true; draggedIndex = i;
-                        dragOffset = pieces[i]->getSprite().getPosition() - mp;
-                    }
-                    break;
-                }
-            }
-        }
-    }
-    else if (e.type == sf::Event::MouseMoved) {
-        if (dragging && draggedIndex != -1) {
-            sf::Vector2f mp = window.mapPixelToCoords({ e.mouseMove.x, e.mouseMove.y });
-            pieces[draggedIndex]->getSprite().setPosition(mp + dragOffset);
-        }
-    }
-    else if (e.type == sf::Event::MouseButtonReleased && e.mouseButton.button == sf::Mouse::Left) {
-        if (!dragging) return;
-        sf::Vector2f mp = window.mapPixelToCoords({ e.mouseButton.x,e.mouseButton.y });
-        int c = static_cast<int>((mp.x + dragOffset.x) / TILE_SIZE);
-        int r = static_cast<int>((mp.y + dragOffset.y) / TILE_SIZE);
-        r = clamp(r, 0, BOARD_SIZE - 1);
-        c = clamp(c, 0, BOARD_SIZE - 1);
-
-        bool ok = tryMove(draggedIndex, r, c);
-        if (ok) {
-            whiteTurn = !whiteTurn;
-            if (playWithAI && !whiteTurn) { aiThinking = true; aiClock.restart(); }
-            if (isKingInCheck(whiteTurn, pieces)) {}
-            if (!hasLegalMove(whiteTurn, pieces, textures)) {
-                if (isKingInCheck(whiteTurn, pieces)) endGameMessage = string((whiteTurn ? "White" : "Black")) + " - Checkmate";
-                else endGameMessage = "Draw - Stalemate";
-                gameOver = true; state = GameState::GAME_OVER;
-            }
-        }
-        else {
-            if (draggedIndex >= 0 && draggedIndex < (int)pieces.size()) pieces[draggedIndex]->setPosition(pieces[draggedIndex]->getRow(), pieces[draggedIndex]->getCol());
-        }
-        dragging = false; draggedIndex = -1;
-    }
-    else if (e.type == sf::Event::KeyPressed) {
-        if (e.key.code == sf::Keyboard::U) undo();
-        else if (e.key.code == sf::Keyboard::S) saveToFile("chess_save.txt");
-        else if (e.key.code == sf::Keyboard::L) loadFromFile("chess_save.txt");
-        else if (e.key.code == sf::Keyboard::R) startNewGame(playWithAI);
-        else if (e.key.code == sf::Keyboard::Escape) state = GameState::MAIN_MENU;
-    }
-}
-
-void ChessGame::render() {
-    window.clear(sf::Color(40, 40, 40));
-    if (state == GameState::MAIN_MENU) renderMainMenu();
-    else {
-        renderBoardAndSidebar();
-        if (dragging && draggedIndex != -1) drawHighlightsForPiece(draggedIndex);
-        drawKingCheckOutlines();
-        if (state == GameState::GAME_OVER) renderGameOverOverlay();
-    }
->>>>>>> 11ed285900d2ae6925459c826014a259e6eb0b8a
     window.display();
 }
 
 void ChessGame::renderMainMenu() {
-<<<<<<< HEAD
     // Simple centered layout
     sf::Text title = titleText;
     title.setPosition(window.getSize().x / 2.f - title.getLocalBounds().width / 2.f, 110.f);
@@ -897,29 +447,10 @@ void ChessGame::renderMainMenu() {
 
     window.draw(title);
     window.draw(subtitle);
-=======
-    sf::RectangleShape bg(sf::Vector2f((float)window.getSize().x, (float)window.getSize().y));
-    bg.setFillColor(sf::Color(230, 240, 230));
-    window.draw(bg);
-
-    sf::FloatRect tb = titleText.getLocalBounds();
-    float centerX = window.getSize().x / 2.f;
-    float centerY = window.getSize().y / 2.f;
-
-    titleText.setPosition(centerX - tb.width / 2.f, centerY - 200.f);
-    titleText.setFillColor(sf::Color(20, 20, 20));
-    window.draw(titleText);
-
-    sf::FloatRect sb = subText.getLocalBounds();
-    subText.setPosition(centerX - sb.width / 2.f, titleText.getPosition().y + tb.height + 18.f);
-    subText.setFillColor(sf::Color(60, 60, 60));
-    window.draw(subText);
->>>>>>> 11ed285900d2ae6925459c826014a259e6eb0b8a
 
     playFriendBtn.draw(window);
     playAIBtn.draw(window);
     exitBtn.draw(window);
-<<<<<<< HEAD
 }
 
 void ChessGame::renderBoardAndSidebar() {
@@ -1007,10 +538,10 @@ void ChessGame::drawSidebar() {
     drawCapturedRow(sx + 14.f, y, capturedByBlack);
 
     // Controls
-        sf::Text ctrl("\n\nControls:\nDrag pieces\nU:Undo  S:Save  L:Load\nR:Restart  Esc:Menu", font, 14);
-       ctrl.setFillColor(sf::Color::Black);
-       ctrl.setPosition(sx + 14.f, y);
-       window.draw(ctrl);
+    sf::Text ctrl("\n\nControls:\nDrag pieces\nU:Undo  S:Save  L:Load\nR:Restart  Esc:Menu", font, 14);
+    ctrl.setFillColor(sf::Color::Black);
+    ctrl.setPosition(sx + 14.f, y);
+    window.draw(ctrl);
 
     // back-to-menu button in sidebar when in game
     backToMenuBtn.draw(window);
@@ -1060,124 +591,11 @@ void ChessGame::drawHighlightsForPiece(int pieceIndex) {
             dot.setPosition(c * Chess::TILE_SIZE + Chess::TILE_SIZE / 2.f - 10.f,
                 r * Chess::TILE_SIZE + Chess::TILE_SIZE / 2.f - 10.f);
             window.draw(dot);
-=======
-
-    sf::FloatRect fb = footerText.getLocalBounds();
-    footerText.setPosition(centerX - fb.width / 2.f, (float)window.getSize().y - 30.f);
-    footerText.setFillColor(sf::Color(80, 80, 80));
-    window.draw(footerText);
-}
-
-void ChessGame::renderBoardAndSidebar() {
-    updateCheckHighlights();
-
-    for (int r = 0; r < BOARD_SIZE; ++r) for (int c = 0; c < BOARD_SIZE; ++c) window.draw(squares[r][c]);
-    for (int i = 0; i < (int)pieces.size(); ++i) if (i != draggedIndex) window.draw(pieces[i]->getSprite());
-    if (draggedIndex != -1 && draggedIndex < (int)pieces.size()) window.draw(pieces[draggedIndex]->getSprite());
-    drawSidebar();
-}
-
-void ChessGame::drawCapturedRow(float startX, float& y, const vector<string>& captured, float iconSize, float padding) {
-    float x = startX;
-    float maxW = (float)SIDEBAR_WIDTH - 24.f;
-    float step = iconSize + padding;
-    for (size_t i = 0; i < captured.size(); ++i) {
-        auto it = textures.find(captured[i]);
-        if (it == textures.end()) continue;
-        sf::Sprite s(it->second);
-        sf::FloatRect lb = s.getLocalBounds();
-        if (lb.width > 0.f && lb.height > 0.f) {
-            float scale = min(iconSize / lb.width, iconSize / lb.height);
-            s.setScale(scale, scale);
-        }
-        s.setPosition(startX + (float)((int)(x - startX) % (int)maxW), y);
-        window.draw(s);
-
-        x += step;
-        if (x - startX + iconSize > maxW) {
-            x = startX;
-            y += iconSize + padding;
-        }
-    }
-    y += iconSize + padding * 0.5f;
-}
-
-void ChessGame::drawSidebar() {
-    float sx = TILE_SIZE * BOARD_SIZE;
-    sf::RectangleShape sidebar(sf::Vector2f((float)SIDEBAR_WIDTH, (float)TILE_SIZE * BOARD_SIZE));
-    sidebar.setPosition(sx, 0);
-    sidebar.setFillColor(sf::Color(40, 40, 40));
-    window.draw(sidebar);
-
-    float y = 12.f;
-
-    sf::Text tturn("Turn: " + string(whiteTurn ? "White" : "Black"), font, 20);
-    tturn.setFillColor(sf::Color::White);
-    tturn.setPosition(sx + 12.f, y);
-    window.draw(tturn);
-    y += 28.f;
-
-    sf::Text tmode("Mode: " + string(playWithAI ? "Play vs AI" : "2 Players"), font, 16);
-    tmode.setFillColor(sf::Color(200, 200, 200));
-    tmode.setPosition(sx + 12.f, y);
-    window.draw(tmode);
-    y += 34.f;
-
-    {
-        sf::Text head("Captured by White", font, 16);
-        head.setFillColor(sf::Color(255, 215, 0));
-        head.setPosition(sx + 12.f, y);
-        window.draw(head);
-        y += 22.f;
-        float rowY = y;
-        drawCapturedRow(sx + 12.f, rowY, capturedByWhite, 36.f, 6.f);
-        y = rowY + 6.f;
-    }
-
-    {
-        sf::Text head("Captured by Black", font, 16);
-        head.setFillColor(sf::Color(173, 216, 230));
-        head.setPosition(sx + 12.f, y);
-        window.draw(head);
-        y += 22.f;
-        float rowY = y;
-        drawCapturedRow(sx + 12.f, rowY, capturedByBlack, 36.f, 6.f);
-        y = rowY + 6.f;
-    }
-
-    sf::Text ctrl("Controls:\nDrag pieces\nU:Undo  S:Save  L:Load\nR:Restart  Esc:Menu", font, 14);
-    ctrl.setFillColor(sf::Color::White);
-    ctrl.setPosition(sx + 12.f, max(y + 8.f, (float)TILE_SIZE * BOARD_SIZE - 180.f));
-    window.draw(ctrl);
-
-    backToMenuBtn.draw(window);
-}
-
-void ChessGame::drawHighlightsForPiece(int pieceIndex) {
-    auto moves = computeLegalMovesForPiece(pieceIndex);
-    for (auto& t : moves) {
-        int r = get<0>(t), c = get<1>(t); bool isCap = get<2>(t);
-        sf::Vector2f center((c + 0.5f) * TILE_SIZE, (r + 0.5f) * TILE_SIZE);
-        if (!isCap) {
-            sf::CircleShape circle(TILE_SIZE * 0.12f);
-            circle.setOrigin(circle.getRadius(), circle.getRadius());
-            circle.setPosition(center);
-            circle.setFillColor(sf::Color(30, 180, 30, 180));
-            window.draw(circle);
-        }
-        else {
-            sf::RectangleShape rect(sf::Vector2f((float)TILE_SIZE - 8.f, (float)TILE_SIZE - 8.f));
-            rect.setPosition((float)c * TILE_SIZE + 4.f, (float)r * TILE_SIZE + 4.f);
-            rect.setFillColor(sf::Color(0, 0, 0, 0));
-            rect.setOutlineColor(sf::Color(220, 20, 60)); rect.setOutlineThickness(4.f);
-            window.draw(rect);
->>>>>>> 11ed285900d2ae6925459c826014a259e6eb0b8a
         }
     }
 }
 
 void ChessGame::renderGameOverOverlay() {
-<<<<<<< HEAD
     // dimmer
     sf::RectangleShape overlay({ static_cast<float>(Chess::TILE_SIZE * Chess::BOARD_SIZE),
                                  static_cast<float>(Chess::TILE_SIZE * Chess::BOARD_SIZE) });
@@ -1365,29 +783,3 @@ void ChessGame::recordCapture(bool capturerIsWhite, const std::string& capturedN
     if (capturerIsWhite) capturedByWhite.push_back(capturedName);
     else capturedByBlack.push_back(capturedName);
 }
-=======
-    sf::RectangleShape overlay(sf::Vector2f((float)TILE_SIZE * BOARD_SIZE, (float)TILE_SIZE * BOARD_SIZE));
-    overlay.setFillColor(sf::Color(0, 0, 0, 150));
-    window.draw(overlay);
-
-    string msg = endGameMessage.empty() ? "Game Over" : endGameMessage;
-    sf::Text t(msg, font, 48); t.setFillColor(sf::Color::White);
-    sf::FloatRect tb = t.getLocalBounds();
-    t.setPosition((TILE_SIZE * BOARD_SIZE - tb.width) / 2.f, (TILE_SIZE * BOARD_SIZE - tb.height) / 2.f - 40.f);
-    window.draw(t);
-
-    string reason;
-    if (msg.find("Checkmate") != string::npos) reason = "Checkmate — King is attacked and has no legal moves.";
-    else if (msg.find("Stalemate") != string::npos) reason = "Stalemate — side has no legal moves but is not in check.";
-    else reason = "Game finished.";
-    sf::Text rtext(reason, font, 18); rtext.setFillColor(sf::Color::White);
-    sf::FloatRect rb = rtext.getLocalBounds();
-    rtext.setPosition((TILE_SIZE * BOARD_SIZE - rb.width) / 2.f, (TILE_SIZE * BOARD_SIZE - rb.height) / 2.f + 20.f);
-    window.draw(rtext);
-}
-
-void ChessGame::recordCapture(bool capturerIsWhite, const string& capturedName) {
-    if (capturerIsWhite) capturedByWhite.push_back(capturedName);
-    else capturedByBlack.push_back(capturedName);
-}
->>>>>>> 11ed285900d2ae6925459c826014a259e6eb0b8a

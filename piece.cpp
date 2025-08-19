@@ -1,21 +1,9 @@
-<<<<<<< HEAD
 #include "Piece.h"
 #include "Constants.h"
 #include <stdexcept>
 #include <algorithm>
 
 Piece::Piece(const string& name_, int r, int c, const sf::Texture& t) : name(name_), row(r), col(c) {
-=======
-#include "piece.h"
-#include <stdexcept>
-#include <iostream> 
-#include <tuple>    
-#include <cmath>    
-#include <climits> 
-
-Piece::Piece(const string& name_, int r, int c, const sf::Texture& t)
-    : name(name_), row(r), col(c) {
->>>>>>> 11ed285900d2ae6925459c826014a259e6eb0b8a
     sprite.setTexture(t);
     sprite.setPosition(static_cast<float>(col) * TILE_SIZE, static_cast<float>(row) * TILE_SIZE);
 }
@@ -125,7 +113,7 @@ vector<unique_ptr<Piece>> clonePieces(const vector<unique_ptr<Piece>>& pieces, c
     copy.reserve(pieces.size());
     for (const auto& p : pieces) {
         auto np = createPieceFromName(p->getName(), p->getRow(), p->getCol(), textures);
-        np->hasMoved = p->hasMoved;
+        np->getHasMoved() = p->getHasMoved();
         copy.push_back(move(np));
     }
     return copy;
@@ -238,16 +226,6 @@ bool hasLegalMove(bool white, const vector<unique_ptr<Piece>>& pieces, const map
     return false;
 }
 
-string coordToAlgebraic(int row, int col) { char file = 'a' + col; char rank = '8' - row; return string() + file + rank; }
-char pieceToLetter(const string& name) {
-    if (name.find("pawn") != string::npos) return ' ';
-    if (name.find("rook") != string::npos) return 'R';
-    if (name.find("knight") != string::npos) return 'N';
-    if (name.find("bishop") != string::npos) return 'B';
-    if (name.find("queen") != string::npos) return 'Q';
-    if (name.find("king") != string::npos) return 'K';
-    return ' ';
-}
 
 int pieceValue(const string& name) {
     if (name.find("pawn") != string::npos) return 1;
